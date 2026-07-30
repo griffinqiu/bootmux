@@ -52,9 +52,9 @@ const RESERVED_COMMANDS: &[&str] = &[
 #[derive(Parser)]
 #[command(
     name = "bootmux",
+    version,
     about = "Manage tmux sessions and Herdr workspaces from tmuxinator-compatible YAML",
-    override_usage = "bootmux [OPTIONS] [COMMAND]",
-    disable_version_flag = true
+    override_usage = "bootmux [OPTIONS] [COMMAND]"
 )]
 pub struct Cli {
     /// Select a backend explicitly. Otherwise bootmux uses the active

@@ -13,11 +13,28 @@ bootmux needs at least one supported multiplexer:
 - tmux 2.6 or newer
 - Herdr 0.7.5 or newer, using socket protocol 17
 
-Building bootmux requires Rust 1.89 or newer:
+Installing bootmux requires Rust and Cargo 1.89 or newer. Install the latest
+release from crates.io:
 
 ```sh
 rustc --version
-cargo install --path .
+cargo --version
+cargo install bootmux --locked
+bootmux version
+```
+
+To install the current source checkout instead:
+
+```sh
+cargo install --path . --locked
+bootmux version
+```
+
+With mise, install Rust/Cargo and bootmux through the Cargo backend:
+
+```sh
+mise use -g rust
+mise use -g cargo:bootmux@latest
 bootmux version
 ```
 

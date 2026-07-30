@@ -76,6 +76,15 @@ fn version_prints_bootmux_version() {
         .assert()
         .success()
         .stdout(predicate::str::starts_with("bootmux "));
+
+    for flag in ["-V", "--version"] {
+        setup
+            .cmd()
+            .arg(flag)
+            .assert()
+            .success()
+            .stdout(format!("bootmux {}\n", env!("CARGO_PKG_VERSION")));
+    }
 }
 
 #[test]

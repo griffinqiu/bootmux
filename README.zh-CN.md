@@ -34,18 +34,45 @@ bootmux start myproject
 - 至少安装一个终端多路复用器：
   - tmux >= 2.6
   - Herdr >= 0.7.5，并使用 socket protocol 17
-- 从源码构建需要 Rust >= 1.89
+- 安装或构建 bootmux 需要 Rust 和 Cargo >= 1.89
 - 正常的项目和编辑器工作流需要设置 `$SHELL` 和 `$EDITOR`
 - 可选：`bootmux picker` 需要 `fzf`
 
-从当前 checkout 安装：
+## 安装
+
+使用 Cargo：
 
 ```sh
-cargo install --path .
-bootmux doctor
+cargo --version
+cargo install bootmux --locked
+bootmux version
 ```
 
-静态的 Bash、Zsh 和 Fish 补全脚本位于 `completion/`。
+使用 [mise 的 Cargo 后端](https://mise.jdx.dev/dev-tools/backends/cargo.html)：
+
+```sh
+mise use -g rust
+mise use -g cargo:bootmux@latest
+bootmux version
+```
+
+也可以构建当前 checkout，而不是安装 crates.io 版本：
+
+```sh
+cargo install --path . --locked
+bootmux version
+```
+
+Cargo 只会安装可执行文件。静态 Bash、Zsh 和 Fish 补全脚本位于
+[`completion/`](completion/)；请从相同版本的源码中把对应文件复制到 shell
+的补全目录。
+
+安装后，请检查准备使用的每个后端：
+
+```sh
+bootmux --backend tmux doctor
+bootmux --backend herdr doctor
+```
 
 ## 快速上手
 

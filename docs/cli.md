@@ -17,6 +17,7 @@ backend as described in
 | `bootmux` | Starts a local `.tmuxinator.y[a]ml`, otherwise opens the picker |
 | `bootmux .` | Alias for `bootmux local` |
 | `bootmux -v` | Equivalent to `bootmux version` |
+| `bootmux -V`, `bootmux --version` | Print the standard Cargo-style version |
 
 Command names and aliases take precedence over project shorthand. To start a
 project named like an alias, make the command explicit:

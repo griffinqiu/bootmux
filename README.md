@@ -35,18 +35,45 @@ bootmux start myproject
 - At least one multiplexer:
   - tmux >= 2.6
   - Herdr >= 0.7.5 using socket protocol 17
-- Rust >= 1.89 to build from source
+- Rust and Cargo >= 1.89 to install or build bootmux
 - `$SHELL` and `$EDITOR` for normal project and editor workflows
 - Optional: `fzf` for `bootmux picker`
 
-Install from this checkout:
+## Installation
+
+With Cargo:
 
 ```sh
-cargo install --path .
-bootmux doctor
+cargo --version
+cargo install bootmux --locked
+bootmux version
 ```
 
-Static Bash, Zsh, and Fish completions are in `completion/`.
+With [mise's Cargo backend](https://mise.jdx.dev/dev-tools/backends/cargo.html):
+
+```sh
+mise use -g rust
+mise use -g cargo:bootmux@latest
+bootmux version
+```
+
+Or build this checkout instead of the crates.io release:
+
+```sh
+cargo install --path . --locked
+bootmux version
+```
+
+Cargo installs the executable only. Static Bash, Zsh, and Fish completion
+files are in [`completion/`](completion/); copy the matching-version file from
+the source tree into your shell's completion directory.
+
+After installation, check each backend you intend to use:
+
+```sh
+bootmux --backend tmux doctor
+bootmux --backend herdr doctor
+```
 
 ## Quick start
 

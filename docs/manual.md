@@ -70,21 +70,61 @@ translation can preserve topology without preserving exact cell geometry.
 
 ## 2. Install and verify
 
-### Build from source
-
 Requirements:
 
 - a Unix-like operating system
-- Rust 1.89 or newer
+- Rust and Cargo 1.89 or newer
 - tmux 2.6 or newer, Herdr 0.7.5/protocol 17, or both
 - `$SHELL` and `$EDITOR`
 - optional `fzf`
 
+### Install from crates.io
+
 ```sh
 rustc --version
-cargo install --path .
+cargo --version
+cargo install bootmux --locked
 bootmux version
 ```
+
+Cargo normally installs the binary into
+`${CARGO_HOME:-$HOME/.cargo}/bin`. Add that directory to `PATH` if the shell
+cannot find `bootmux`.
+
+### Install with mise
+
+[mise's Cargo backend](https://mise.jdx.dev/dev-tools/backends/cargo.html)
+builds the crate with Cargo and adds the selected version to mise's global
+configuration:
+
+```sh
+mise use -g rust
+mise use -g cargo:bootmux@latest
+bootmux version
+```
+
+Use `mise use cargo:bootmux@0.1.0` without `-g` when a project should pin
+bootmux locally.
+
+### Install from a source checkout
+
+From the repository root:
+
+```sh
+cargo install --path . --locked
+bootmux version
+```
+
+### Upgrade or uninstall
+
+```sh
+cargo install bootmux --locked --force
+cargo uninstall bootmux
+```
+
+`cargo uninstall` removes the Cargo-installed executable only. It does not
+delete project YAML, bootmux settings, Herdr ownership state, or completion
+files copied by hand.
 
 ### Check each backend
 
@@ -107,7 +147,8 @@ downgrade from another protocol.
 
 ### Shell completion
 
-The repository provides project/subcommand-oriented static completion files:
+Cargo installs the executable only. The repository/source archive provides
+project/subcommand-oriented static completion files:
 
 ```text
 completion/bootmux.bash
@@ -115,9 +156,19 @@ completion/bootmux.zsh
 completion/bootmux.fish
 ```
 
-Bash can source its file directly. Fish can source its file or place it in the
-normal Fish completions directory. Zsh needs explicit registration after
-`compinit`:
+Bash can source its file directly:
+
+```sh
+source /path/to/bootmux/completion/bootmux.bash
+```
+
+Fish can source its file or place it in the normal Fish completions directory:
+
+```fish
+source /path/to/bootmux/completion/bootmux.fish
+```
+
+Zsh needs explicit registration after `compinit`:
 
 ```zsh
 autoload -Uz compinit && compinit

@@ -67,21 +67,59 @@ tmux，Herdr 的所有权检查更严格，而布局转换可以保留拓扑，�
 
 ## 2. 安装并验证
 
-### 从源码构建
-
 要求：
 
 - 类 Unix 操作系统
-- Rust 1.89 或更新版本
+- Rust 和 Cargo 1.89 或更新版本
 - tmux 2.6 或更新版本、Herdr 0.7.5/protocol 17，或两者都安装
 - `$SHELL` 和 `$EDITOR`
 - 可选的 `fzf`
 
+### 从 crates.io 安装
+
 ```sh
 rustc --version
-cargo install --path .
+cargo --version
+cargo install bootmux --locked
 bootmux version
 ```
+
+Cargo 通常会把二进制文件安装到
+`${CARGO_HOME:-$HOME/.cargo}/bin`。如果 shell 找不到 `bootmux`，请把这个
+目录加入 `PATH`。
+
+### 使用 mise 安装
+
+[mise 的 Cargo 后端](https://mise.jdx.dev/dev-tools/backends/cargo.html)
+会用 Cargo 构建 crate，并把所选版本写入 mise 的全局配置：
+
+```sh
+mise use -g rust
+mise use -g cargo:bootmux@latest
+bootmux version
+```
+
+如果只想为某个项目固定 bootmux，请在项目中运行不带 `-g` 的
+`mise use cargo:bootmux@0.1.0`。
+
+### 从源码 checkout 安装
+
+在仓库根目录运行：
+
+```sh
+cargo install --path . --locked
+bootmux version
+```
+
+### 升级或卸载
+
+```sh
+cargo install bootmux --locked --force
+cargo uninstall bootmux
+```
+
+`cargo uninstall` 只会删除 Cargo 安装的可执行文件，不会删除项目 YAML、
+bootmux 设置、Herdr 所有权状态或手动复制的补全脚本。
 
 ### 检查每个后端
 
@@ -102,7 +140,8 @@ bootmux 要求 Herdr 客户端和服务器相互兼容。它不会静默降级�
 
 ### Shell 补全
 
-仓库提供了面向项目和子命令的静态补全文件：
+Cargo 只会安装可执行文件。仓库/源码归档提供了面向项目和子命令的静态补全
+文件：
 
 ```text
 completion/bootmux.bash
@@ -110,8 +149,19 @@ completion/bootmux.zsh
 completion/bootmux.fish
 ```
 
-Bash 可以直接 source 对应文件。Fish 可以 source 对应文件，也可以把它放入
-Fish 的常规补全目录。Zsh 需要在 `compinit` 后显式注册：
+Bash 可以直接 source 对应文件：
+
+```sh
+source /path/to/bootmux/completion/bootmux.bash
+```
+
+Fish 可以 source 对应文件，也可以把它放入 Fish 的常规补全目录：
+
+```fish
+source /path/to/bootmux/completion/bootmux.fish
+```
+
+Zsh 需要在 `compinit` 后显式注册：
 
 ```zsh
 autoload -Uz compinit && compinit

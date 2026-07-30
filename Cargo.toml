@@ -5,6 +5,12 @@ edition = "2021"
 rust-version = "1.89"
 description = "Manage tmux sessions and Herdr workspaces from tmuxinator-compatible YAML"
 license = "MIT"
+readme = "README.md"
+homepage = "https://github.com/griffinqiu/bootmux"
+repository = "https://github.com/griffinqiu/bootmux"
+keywords = ["tmux", "herdr", "tmuxinator", "terminal", "workspace"]
+categories = ["command-line-utilities", "development-tools"]
+publish = ["crates-io"]
 
 [dependencies]
 anyhow = "1"
