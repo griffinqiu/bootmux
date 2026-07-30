@@ -4,6 +4,8 @@ All notable changes to bootmux are documented here.
 
 ## [Unreleased]
 
+## [0.1.1] - 2026-07-30
+
 - Document mise's 24-hour minimum release age and use an immediately
   installable exact Cargo version.
 - Add guarded stable and prerelease automation for crates.io, GitHub Releases,
