@@ -52,9 +52,12 @@ bootmux version
 
 ```sh
 mise use -g rust
-mise use -g cargo:bootmux@latest
+mise use -g cargo:bootmux@0.1.0
 bootmux version
 ```
+
+显式版本在 mise 针对新发布版本默认设置的 24 小时安全延迟期内也能正常安装。
+发布满 24 小时后，`mise use -g cargo:bootmux` 会选择最新的可用版本。
 
 使用 Homebrew：
 
@@ -175,6 +178,8 @@ bootmux --backend herdr debug PROJECT
   [后端与生命周期](docs/backends.md)和
   [mux 兼容性](docs/mux-compatibility.md)
 - 贡献者文档（英文）：[开发与验证](docs/development.md)
+- 维护者文档：[中文发布指南](docs/releasing.zh-CN.md) ·
+  [Release guide](docs/releasing.md)
 
 ## Picker 快捷键
 

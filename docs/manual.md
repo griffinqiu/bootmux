@@ -99,12 +99,18 @@ configuration:
 
 ```sh
 mise use -g rust
-mise use -g cargo:bootmux@latest
+mise use -g cargo:bootmux@0.1.0
 bootmux version
 ```
 
 Use `mise use cargo:bootmux@0.1.0` without `-g` when a project should pin
 bootmux locally.
+
+mise filters fuzzy requests such as `latest` through a 24-hour minimum release
+age by default. A just-published crate may therefore produce “no versions
+found” with `cargo:bootmux@latest`. Use the explicit version shown above
+instead of disabling the safety delay. Once the release is old enough,
+`mise use -g cargo:bootmux` selects the latest eligible version.
 
 ### Install with Homebrew
 

@@ -157,4 +157,6 @@ Do not rewrite an upstream fixture merely to make a backend accept it. Model an
 expected safety rejection explicitly or add a separate bootmux-owned fixture.
 
 [Documentation index](../README.md#documentation) ·
-[Complete user manual](manual.md)
+[Complete user manual](manual.md) ·
+[Release guide](releasing.md) ·
+[中文发布指南](releasing.zh-CN.md)

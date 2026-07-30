@@ -53,9 +53,13 @@ With [mise's Cargo backend](https://mise.jdx.dev/dev-tools/backends/cargo.html):
 
 ```sh
 mise use -g rust
-mise use -g cargo:bootmux@latest
+mise use -g cargo:bootmux@0.1.0
 bootmux version
 ```
+
+The explicit version also works during mise's default 24-hour safety delay for
+newly published releases. After a release has aged past that delay,
+`mise use -g cargo:bootmux` selects the latest eligible version.
 
 With Homebrew:
 
@@ -181,6 +185,8 @@ project.
   [backends and lifecycle](docs/backends.md), and
   [mux compatibility](docs/mux-compatibility.md)
 - Contributors: [Development and verification](docs/development.md)
+- Maintainers: [Release guide](docs/releasing.md) ·
+  [中文发布指南](docs/releasing.zh-CN.md)
 
 ## Picker bindings
 

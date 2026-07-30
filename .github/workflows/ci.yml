@@ -1,0 +1,131 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: Rust ${{ matrix.toolchain }} on ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            toolchain: stable
+            quality: true
+          - os: macos-14
+            toolchain: stable
+            quality: false
+          - os: ubuntu-latest
+            toolchain: 1.89.0
+            quality: false
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        run: |
+          rustup toolchain install "${{ matrix.toolchain }}" --profile minimal
+          rustup override set "${{ matrix.toolchain }}"
+          rustup component add rustfmt clippy
+
+      - name: Install Fish
+        if: matrix.toolchain == 'stable'
+        run: |
+          if [[ "${{ runner.os }}" == "Linux" ]]; then
+            sudo apt-get update
+            sudo apt-get install --yes fish zsh
+          else
+            brew install fish
+          fi
+
+      - name: Run full quality gate
+        if: matrix.quality
+        run: make check
+
+      - name: Run tests
+        if: ${{ matrix.quality == false }}
+        run: cargo test --all-targets --locked
+
+      - name: Check release package
+        if: matrix.quality
+        run: cargo publish --dry-run --locked
+
+      - name: Check release automation on macOS Bash
+        if: runner.os == 'macOS'
+        run: |
+          /bin/bash -n scripts/release.sh
+
+          BOOTMUX_RELEASE_TEST_MODE=1 source scripts/release.sh
+          release_exists() { return 0; }
+          validate_existing_release() { return 0; }
+          release_is_draft() { printf 'false\n'; }
+          ! current_version_is_pending_release 0.1.0
+          release_is_draft() { printf 'true\n'; }
+          current_version_is_pending_release 0.1.0
+          release_exists() { return 1; }
+          local_tag_exists() { return 1; }
+          remote_tag_exists() { return 1; }
+          crate_exists() { return 1; }
+          release_preparation_marker_exists() { return 0; }
+          current_version_is_pending_release 0.1.0
+          track=stable
+          ensure_pending_track_matches 0.1.0
+          track=prerelease
+          ! (ensure_pending_track_matches 0.1.0 2>/dev/null)
+
+          test "$(make release-version VERSION=9.8.7)" = "9.8.7"
+          test "$(make prerelease-version VERSION=9.8.7-rc.1)" = "9.8.7-rc.1"
+          ! make prerelease-version VERSION=9.8.7-rc.01
+
+          cp Cargo.toml "$RUNNER_TEMP/Cargo.toml"
+          restore_manifest() {
+            cp "$RUNNER_TEMP/Cargo.toml" Cargo.toml
+          }
+          trap restore_manifest EXIT
+          set_manifest_version() {
+            BOOTMUX_TEST_VERSION="$1" perl -0pi -e \
+              's/(\[package\]\nname = "bootmux"\nversion = ")[^"]+/$1$ENV{BOOTMUX_TEST_VERSION}/' \
+              Cargo.toml
+          }
+
+          set_manifest_version 0.1.0
+          test "$(make release-version)" = "0.1.1"
+          test "$(make prerelease-version)" = "0.1.1-rc.1"
+          set_manifest_version 0.1.1-rc.1
+          test "$(make prerelease-version)" = "0.1.1-rc.2"
+          test "$(make release-version)" = "0.1.1"
+          set_manifest_version 0.1.1-alpha.1
+          test "$(make prerelease-version CHANNEL=beta)" = "0.1.1-beta.1"
+          set_manifest_version 0.1.1-beta.1
+          test "$(make prerelease-version CHANNEL=rc)" = "0.1.1-rc.1"
+          restore_manifest
+          trap - EXIT
+
+          rm -f /tmp/bootmux-make-injection
+          ! make release-version VERSION='"; touch /tmp/bootmux-make-injection; : "'
+          test ! -e /tmp/bootmux-make-injection
+
+          ruby -c packaging/homebrew/tap/Formula/bootmux.rb
+          brew style packaging/homebrew/tap/Formula/bootmux.rb
+
+      - name: Build and test the Homebrew formula
+        if: runner.os == 'macOS'
+        run: |
+          cleanup_homebrew_test() {
+            brew uninstall --force bootmux >/dev/null 2>&1 || true
+            brew untap --force bootmux/ci >/dev/null 2>&1 || true
+          }
+          trap cleanup_homebrew_test EXIT
+
+          brew tap-new --no-git bootmux/ci
+          tap_root="$(brew --repository bootmux/ci)"
+          cp packaging/homebrew/tap/Formula/bootmux.rb "$tap_root/Formula/bootmux.rb"
+          brew install --build-from-source bootmux/ci/bootmux
+          brew test bootmux/ci/bootmux

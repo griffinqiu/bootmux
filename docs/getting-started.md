@@ -34,9 +34,13 @@ With mise, install Rust/Cargo and bootmux through the Cargo backend:
 
 ```sh
 mise use -g rust
-mise use -g cargo:bootmux@latest
+mise use -g cargo:bootmux@0.1.0
 bootmux version
 ```
+
+mise applies a 24-hour minimum release age to fuzzy versions by default. The
+explicit version works immediately; after that delay,
+`mise use -g cargo:bootmux` selects the latest eligible release.
 
 Homebrew builds the tagged release and installs all three completion files:
 

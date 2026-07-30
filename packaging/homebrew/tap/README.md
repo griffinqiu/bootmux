@@ -18,3 +18,6 @@ brew uninstall griffinqiu/tap/bootmux
 The formula builds the tagged release from source and installs Bash, Zsh, and
 Fish completions. bootmux requires tmux 2.6+, Herdr 0.7.5/protocol 17, or both
 at runtime.
+
+The Formula is synchronized by the stable release workflow documented in
+the [bootmux release guide](https://github.com/griffinqiu/bootmux/blob/main/docs/releasing.md).

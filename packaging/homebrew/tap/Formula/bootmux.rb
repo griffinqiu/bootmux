@@ -32,6 +32,11 @@ class Bootmux < Formula
     assert_match "backend: herdr", output
     assert_match "project: homebrew-test", output
     assert_match "pane[0] commands=1", output
-    assert_match "bootmux #{version}", shell_output("#{bin}/bootmux --version")
+    version_output = shell_output("#{bin}/bootmux --version")
+    if build.stable?
+      assert_match "bootmux #{version}", version_output
+    else
+      assert_match(/\Abootmux \d+\.\d+\.\d+/, version_output)
+    end
   end
 end

@@ -2,6 +2,14 @@
 
 All notable changes to bootmux are documented here.
 
+## [Unreleased]
+
+- Document mise's 24-hour minimum release age and use an immediately
+  installable exact Cargo version.
+- Add guarded stable and prerelease automation for crates.io, GitHub Releases,
+  and the Homebrew tap.
+- Add Linux, macOS, and Rust 1.89 CI coverage.
+
 ## 0.1.0 - 2026-07-30
 
 First stable release.
