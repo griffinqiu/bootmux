@@ -1,0 +1,15 @@
+# Tests window-level root override
+name: window_root
+root: ~/default
+windows:
+  - home:
+      root: ~/
+      panes:
+        - ls
+  - projects:
+      root: ~/projects
+      panes:
+        - ls
+  - default_root:
+      panes:
+        - pwd

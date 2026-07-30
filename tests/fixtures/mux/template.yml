@@ -1,0 +1,5 @@
+# Tests template variable substitution
+name: template_test
+root: <%= @settings["root"] %>
+windows:
+  - main: echo "host=<%= @settings["host"] %> port=<%= @settings["port"] %>"

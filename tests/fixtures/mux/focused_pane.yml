@@ -1,0 +1,16 @@
+name: focused_pane
+root: ~/test
+enable_pane_titles: true
+windows:
+  - editor:
+      layout: main-vertical
+      focused_pane: shell
+      panes:
+        - editor: vim
+        - shell: bash
+        - logs: tail -f log/development.log
+  - server:
+      focused_pane: 0
+      panes:
+        - bundle exec rails s
+        - tail -f log/server.log

@@ -66,6 +66,18 @@ fn project_in(dir: &str, name: &str) -> Option<String> {
     if dir.is_empty() || !Path::new(dir).is_dir() {
         return None;
     }
+    let relative = Path::new(name);
+    let safe_relative = relative
+        .components()
+        .all(|component| matches!(component, std::path::Component::Normal(_)));
+    if safe_relative {
+        for extension in ["yml", "yaml"] {
+            let direct = Path::new(dir).join(relative).with_extension(extension);
+            if direct.is_file() {
+                return Some(direct.to_string_lossy().into_owned());
+            }
+        }
+    }
     let mut candidates: Vec<PathBuf> = walkdir::WalkDir::new(dir)
         .follow_links(true)
         .into_iter()
@@ -94,9 +106,7 @@ pub fn global_project(env: &Env, name: &str) -> Option<String> {
 }
 
 pub fn project(env: &Env, name: &str) -> String {
-    global_project(env, name)
-        .or_else(|| local_project(env))
-        .unwrap_or_else(|| default_project(env, name))
+    global_project(env, name).unwrap_or_else(|| default_project(env, name))
 }
 
 pub fn project_exists(env: &Env, name: &str) -> bool {

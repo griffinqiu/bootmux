@@ -4,7 +4,13 @@ use serde_norway::Value;
 use crate::pane::Pane;
 use crate::project::Project;
 use crate::shellwords;
-use crate::yaml_ext::{first_entry, get, scalar_to_string};
+use crate::yaml_ext::{first_entry, get, join_or_string, scalar_to_string};
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum PaneChainDirection {
+    Right,
+    Down,
+}
 
 pub struct Window {
     pub index: usize,
@@ -24,6 +30,7 @@ impl Window {
             .and_then(scalar_to_string)
             .map(|n| shellwords::escape(&n));
         let body = body.cloned().unwrap_or(Value::Null);
+        validate_pane_chain(&body)?;
         let panes = build_panes(get(&body, "panes"));
 
         Ok(Window {
@@ -45,17 +52,7 @@ impl Window {
     }
 
     pub fn pre(&self) -> Option<String> {
-        match self.option("pre") {
-            Some(Value::Sequence(items)) => Some(
-                items
-                    .iter()
-                    .map(|item| scalar_to_string(item).unwrap_or_default())
-                    .collect::<Vec<_>>()
-                    .join(" && "),
-            ),
-            Some(Value::String(pre)) => Some(pre.clone()),
-            _ => None,
-        }
+        join_or_string(self.option("pre"), "; ")
     }
 
     pub fn synchronize_before(&self) -> bool {
@@ -94,6 +91,35 @@ impl Window {
 
     pub fn has_panes(&self) -> bool {
         !self.panes.is_empty()
+    }
+
+    pub fn is_pane_chain(&self) -> bool {
+        pane_items(get(&self.body, "panes"))
+            .iter()
+            .any(|item| pane_body(item).is_some_and(is_chain_body))
+    }
+
+    /// Returns the split that creates `new_pane_index`. The ratio is the
+    /// share retained by the existing pane.
+    pub fn pane_chain_split(&self, new_pane_index: usize) -> Option<(PaneChainDirection, f64)> {
+        if !self.is_pane_chain() || new_pane_index == 0 {
+            return None;
+        }
+        let items = pane_items(get(&self.body, "panes"));
+        let body = items.get(new_pane_index).and_then(|item| pane_body(item));
+        let direction = body
+            .and_then(|body| get(body, "split"))
+            .and_then(scalar_to_string)
+            .map(|direction| match direction.as_str() {
+                "down" => PaneChainDirection::Down,
+                _ => PaneChainDirection::Right,
+            })
+            .unwrap_or(PaneChainDirection::Right);
+        let ratio = body
+            .and_then(|body| get(body, "ratio"))
+            .and_then(ratio_value)
+            .unwrap_or(0.5);
+        Some((direction, ratio))
     }
 
     pub fn target(&self, project: &Project) -> String {
@@ -190,8 +216,11 @@ impl Window {
 
     // Integer indices must be in range, strings match against escaped pane
     // titles; anything else falls back to the first pane (Ruby Window#pane_index).
-    fn focused_pane_index(&self, project: &Project) -> i64 {
-        let configured = self.option("focused_pane");
+    pub(crate) fn focused_pane_index(&self, project: &Project) -> i64 {
+        self.pane_index(self.option("focused_pane"), project)
+    }
+
+    pub(crate) fn pane_index(&self, configured: Option<&Value>, project: &Project) -> i64 {
         let index = match configured {
             None | Some(Value::Null) | Some(Value::Bool(false)) => 0,
             Some(value) => match as_integer(value) {
@@ -241,7 +270,11 @@ fn build_panes(panes_value: Option<&Value>) -> Vec<Pane> {
                     let title = key
                         .and_then(scalar_to_string)
                         .map(|t| shellwords::escape(&t));
-                    (title, pane_commands(body))
+                    let commands = match body {
+                        Some(body) if is_chain_body(body) => structured_pane_commands(body),
+                        body => pane_commands(body),
+                    };
+                    (title, commands)
                 }
                 Value::Sequence(_) => (None, pane_commands(Some(item))),
                 Value::Null => (None, Vec::new()),
@@ -254,6 +287,81 @@ fn build_panes(panes_value: Option<&Value>) -> Vec<Pane> {
             }
         })
         .collect()
+}
+
+fn pane_items(value: Option<&Value>) -> Vec<&Value> {
+    match value {
+        None | Some(Value::Null) => Vec::new(),
+        Some(Value::Sequence(items)) => items.iter().collect(),
+        Some(value) => vec![value],
+    }
+}
+
+fn pane_body(value: &Value) -> Option<&Value> {
+    match value {
+        Value::Mapping(_) => first_entry(value).1,
+        Value::Null => None,
+        value => Some(value),
+    }
+}
+
+fn is_chain_body(value: &Value) -> bool {
+    matches!(value, Value::Mapping(_))
+        && ["command", "commands", "split", "ratio"]
+            .iter()
+            .any(|key| get(value, key).is_some())
+}
+
+fn structured_pane_commands(body: &Value) -> Vec<Option<String>> {
+    pane_commands(get(body, "command").or_else(|| get(body, "commands")))
+}
+
+fn validate_pane_chain(window_body: &Value) -> Result<()> {
+    let items = pane_items(get(window_body, "panes"));
+    let chain = items
+        .iter()
+        .any(|item| pane_body(item).is_some_and(is_chain_body));
+    if !chain {
+        return Ok(());
+    }
+    if get(window_body, "layout").is_some() {
+        bail!(
+            "A pane chain (`split`/`ratio`/`command(s)`) cannot be combined with a window `layout`."
+        );
+    }
+    for (index, item) in items.iter().enumerate() {
+        let Some(body) = pane_body(item).filter(|body| is_chain_body(body)) else {
+            continue;
+        };
+        if get(body, "command").is_some() && get(body, "commands").is_some() {
+            bail!("Pane {index} cannot specify both `command` and `commands`.");
+        }
+        if index == 0 && (get(body, "split").is_some() || get(body, "ratio").is_some()) {
+            bail!("The first pane in a pane chain cannot specify `split` or `ratio`.");
+        }
+        if let Some(direction) = get(body, "split").and_then(scalar_to_string) {
+            if !matches!(direction.as_str(), "right" | "down") {
+                bail!("Pane {index} split direction must be `right` or `down`, got `{direction}`.");
+            }
+        }
+        if let Some(value) = get(body, "ratio") {
+            let ratio = ratio_value(value).ok_or_else(|| {
+                anyhow::anyhow!("Pane {index} split `ratio` must be a number from 0.1 through 0.9.")
+            })?;
+            if !(0.1..=0.9).contains(&ratio) {
+                bail!("Pane {index} split `ratio` must be from 0.1 through 0.9, got {ratio}.");
+            }
+        }
+    }
+    Ok(())
+}
+
+fn ratio_value(value: &Value) -> Option<f64> {
+    match value {
+        Value::Number(number) => number.as_f64(),
+        Value::String(string) => string.parse().ok(),
+        _ => None,
+    }
 }
 
 // Ruby splats the pane body into the command list: a nil body means no

@@ -1,0 +1,15 @@
+# Tests startup_window and startup_pane
+name: startup
+root: ~/test
+startup_window: logs
+startup_pane: 1
+windows:
+  - editor:
+      panes:
+        - vim
+        - bash
+  - server: rails server
+  - logs:
+      panes:
+        - tail -f log/development.log
+        - tail -f log/test.log

@@ -1,0 +1,22 @@
+# Tests attach: false behavior
+name: sample
+root: ~/test
+socket_name: foo
+pre_window: rbenv shell 2.0.0-p247
+tmux_options: -f ~/.tmux.mac.conf
+attach: false
+windows:
+  - editor:
+      pre:
+        - echo "I get run in each pane, before each pane command!"
+        -
+      layout: main-vertical
+      panes:
+        - vim
+        -
+        - top
+  - shell:
+    - git pull
+    - git merge
+  - database: bundle exec rails db
+  - server: bundle exec rails s

@@ -1,0 +1,11 @@
+# Demo project for mux showcase
+name: demo
+root: ~/
+
+windows:
+  - main:
+      layout: main-vertical
+      panes:
+        - btop || htop || top
+        - vim +':e ~/.bashrc'
+        - journalctl -f --no-hostname -n 10 || dmesg -w || echo "Logs..."

@@ -32,6 +32,30 @@ impl TestSetup {
             .current_dir(self.work_dir.path());
         cmd
     }
+
+    #[cfg(unix)]
+    fn install_fake_fzf(&self, script: &str) -> std::path::PathBuf {
+        use std::os::unix::fs::PermissionsExt;
+
+        let bin = self.work_dir.path().join("bin");
+        std::fs::create_dir_all(&bin).unwrap();
+        let fzf = bin.join("fzf");
+        std::fs::write(&fzf, script).unwrap();
+        std::fs::set_permissions(&fzf, std::fs::Permissions::from_mode(0o700)).unwrap();
+        fzf
+    }
+
+    #[cfg(unix)]
+    fn cmd_with_fake_fzf(&self, script: &str) -> Command {
+        let fzf = self.install_fake_fzf(script);
+        let mut cmd = self.cmd();
+        let parent = fzf.parent().unwrap();
+        cmd.env(
+            "PATH",
+            format!("{}:{}", parent.display(), std::env::var("PATH").unwrap()),
+        );
+        cmd
+    }
 }
 
 const VALID_PROJECT: &str = "name: valid\nattach: false\nwindows:\n  - editor: vim\n";
@@ -52,6 +76,27 @@ fn version_prints_bootmux_version() {
         .assert()
         .success()
         .stdout(predicate::str::starts_with("bootmux "));
+}
+
+#[test]
+fn help_documents_bare_invocation_and_missing_backend_stays_a_parse_error() {
+    let setup = TestSetup::new();
+    setup
+        .cmd()
+        .arg("--help")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains(
+            "Usage: bootmux [OPTIONS] [COMMAND]",
+        ));
+
+    setup
+        .cmd()
+        .arg("--backend")
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("a value is required"))
+        .stderr(predicate::str::contains("picker").not());
 }
 
 #[test]
@@ -145,6 +190,50 @@ fn debug_accepts_project_config_path_and_settings() {
         .success()
         .stdout(predicate::str::contains("new-session -d -s custom"))
         .stdout(predicate::str::contains("echo\\ hello C-m"));
+}
+
+#[test]
+fn stop_accepts_the_same_template_settings_and_args_as_start() {
+    let setup = TestSetup::new();
+    let project = setup.work_dir.path().join("dynamic-stop.yml");
+    let config = r#"name: <%= @settings["name"] %>
+tmux_command: true
+socket_name: <%= @settings["name"] %>
+on_project_stop: test '{{ args[0] }}' = sentinel
+windows:
+  - editor: echo ready
+"#;
+    std::fs::write(&project, config).unwrap();
+    setup.write_project("dynamic", config);
+
+    setup
+        .cmd()
+        .args([
+            "--backend",
+            "tmux",
+            "stop",
+            "--project-config",
+            project.to_str().unwrap(),
+            "name=dynamic",
+            "sentinel",
+            "--suppress-tmux-version-warning",
+        ])
+        .assert()
+        .success();
+
+    setup
+        .cmd()
+        .args([
+            "--backend",
+            "tmux",
+            "stop",
+            "dynamic",
+            "name=dynamic",
+            "sentinel",
+            "--suppress-tmux-version-warning",
+        ])
+        .assert()
+        .success();
 }
 
 #[test]
@@ -274,6 +363,52 @@ fn delete_removes_project_after_confirmation() {
 }
 
 #[test]
+fn deleting_a_missing_named_project_never_deletes_the_local_project() {
+    let setup = TestSetup::new();
+    let local = setup.work_dir.path().join(".tmuxinator.yml");
+    std::fs::write(&local, VALID_PROJECT).unwrap();
+
+    setup
+        .cmd()
+        .args(["delete", "ghost"])
+        .write_stdin("y\n")
+        .assert()
+        .success()
+        .stdout("ghost does not exist!\n");
+
+    assert_eq!(std::fs::read_to_string(local).unwrap(), VALID_PROJECT);
+}
+
+#[test]
+fn command_aliases_win_over_conflicting_global_project_names() {
+    let setup = TestSetup::new();
+    setup.write_project("l", VALID_PROJECT);
+    setup.write_project("st", VALID_PROJECT);
+
+    setup
+        .cmd()
+        .args(["l", "--help"])
+        .assert()
+        .success()
+        .stdout(predicate::str::starts_with("Lists all bootmux projects"));
+    setup
+        .cmd()
+        .args(["st", "--help"])
+        .assert()
+        .success()
+        .stdout(predicate::str::starts_with(
+            "Stop a project using its bootmux config",
+        ));
+
+    setup
+        .cmd()
+        .args(["debug", "l"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("new-session -d -s valid"));
+}
+
+#[test]
 fn implode_removes_config_directories() {
     let setup = TestSetup::new();
     setup.write_project("any", VALID_PROJECT);
@@ -318,4 +453,195 @@ fn projects_in_subdirectories_are_found_by_basename() {
         .assert()
         .success()
         .stdout("bootmux projects:\nteam/nested\n");
+
+    setup
+        .cmd()
+        .args(["debug", "team/nested"])
+        .assert()
+        .code(1)
+        .stdout("Your project file should include some windows.\n");
+}
+
+#[test]
+fn backend_selection_supports_explicit_environment_and_global_default() {
+    let setup = TestSetup::new();
+    setup.write_project(
+        "demo",
+        "name: demo\nattach: false\nwindows:\n  - app: echo hi\n",
+    );
+
+    setup
+        .cmd()
+        .args(["--backend", "herdr", "debug", "demo"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("backend: herdr"))
+        .stdout(predicate::str::contains("project: demo"));
+
+    setup
+        .cmd()
+        .env("HERDR_ENV", "1")
+        .args(["debug", "demo"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("backend: herdr"));
+
+    setup
+        .cmd()
+        .env("HERDR_ACTIVE_WORKSPACE_ID", "w-test")
+        .env("TMUX", "/tmp/tmux,1,1")
+        .args(["debug", "demo"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("backend: herdr"));
+
+    setup
+        .cmd()
+        .env("HERDR_ENV", "1")
+        .args(["--backend", "tmux", "debug", "demo"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("new-session -d -s demo"))
+        .stdout(predicate::str::contains("backend: herdr").not());
+
+    setup
+        .cmd()
+        .args(["config", "set", "default-backend", "herdr"])
+        .assert()
+        .success()
+        .stdout("default_backend = \"herdr\"\n");
+    setup
+        .cmd()
+        .args(["debug", "demo"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("backend: herdr"));
+}
+
+#[test]
+fn backend_global_option_works_with_project_shorthand() {
+    let setup = TestSetup::new();
+    setup.write_project("broken", "name: broken\nwindows: []\n");
+
+    setup
+        .cmd()
+        .args(["--backend", "herdr", "broken"])
+        .assert()
+        .code(1)
+        .stdout("Your project file should include some windows.\n");
+
+    setup
+        .cmd()
+        .args(["broken", "--backend=herdr"])
+        .assert()
+        .code(1)
+        .stdout("Your project file should include some windows.\n");
+}
+
+#[test]
+fn config_and_binding_commands_are_stable() {
+    let setup = TestSetup::new();
+    let expected_path = setup.home_dir.path().join(".config/bootmux/config.toml");
+
+    setup
+        .cmd()
+        .args(["config", "path"])
+        .assert()
+        .success()
+        .stdout(format!("{}\n", expected_path.display()));
+    setup
+        .cmd()
+        .args(["config", "get", "default-backend"])
+        .assert()
+        .success()
+        .stdout("");
+
+    setup
+        .cmd()
+        .args(["bindings", "tmux"])
+        .assert()
+        .success()
+        .stdout("bind-key F new-window \"bootmux picker\"\n");
+    setup
+        .cmd()
+        .args(["bindings", "tmux", "--key", "C-f"])
+        .assert()
+        .success()
+        .stdout("bind-key C-f new-window \"bootmux picker\"\n");
+    setup
+        .cmd()
+        .args(["bindings", "tmux", "--backend", "herdr"])
+        .assert()
+        .success()
+        .stdout("bind-key F new-window \"bootmux picker\"\n");
+    setup
+        .cmd()
+        .args(["bindings", "herdr"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("[[keys.command]]"))
+        .stdout(predicate::str::contains("key = \"prefix+shift+f\""))
+        .stdout(predicate::str::contains("width = \"80%\""));
+}
+
+#[cfg(unix)]
+#[test]
+fn picker_cancel_is_success_and_selection_reuses_backend_resolution() {
+    let setup = TestSetup::new();
+    setup.write_project("broken", "name: broken\nwindows: []\n");
+
+    setup
+        .cmd_with_fake_fzf("#!/bin/sh\ncat >/dev/null\nexit 1\n")
+        .arg("picker")
+        .assert()
+        .success()
+        .stdout("");
+
+    setup
+        .cmd_with_fake_fzf("#!/bin/sh\ncat >/dev/null\nprintf 'broken\\n'\n")
+        .env("HERDR_ENV", "1")
+        .arg("picker")
+        .assert()
+        .code(1)
+        .stdout("Your project file should include some windows.\n");
+}
+
+#[cfg(unix)]
+#[test]
+fn bare_invocation_without_local_project_opens_picker() {
+    let setup = TestSetup::new();
+    setup
+        .cmd_with_fake_fzf("#!/bin/sh\ncat >/dev/null\nexit 130\n")
+        .assert()
+        .success()
+        .stdout("");
+}
+
+#[test]
+fn herdr_debug_validates_native_chain_without_contacting_a_server() {
+    let setup = TestSetup::new();
+    setup.write_project(
+        "chain",
+        r#"
+name: chain
+attach: false
+windows:
+  - app:
+      panes:
+        - editor:
+            command: nvim
+        - server:
+            split: down
+            ratio: 0.65
+            commands: [npm run dev]
+"#,
+    );
+    setup
+        .cmd()
+        .args(["--backend", "herdr", "debug", "chain"])
+        .env("PATH", "/definitely/no/herdr")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("split down ratio=0.6500"))
+        .stdout(predicate::str::contains("pane[1] label=\"server\""));
 }

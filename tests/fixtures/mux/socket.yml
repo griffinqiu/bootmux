@@ -1,0 +1,6 @@
+# Tests socket_name and socket_path
+name: socket_test
+root: ~/test
+socket_name: mysocket
+windows:
+  - main: echo "using named socket"

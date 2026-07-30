@@ -131,40 +131,94 @@ fn rejects_projects_without_name_or_windows() {
 }
 
 #[test]
-fn rejects_deprecated_tmuxinator_options_with_migration_hints() {
+fn accepts_mux_deprecated_aliases_and_custom_tmux_command() {
     let env = test_env();
     let ctx = MockTmux::default();
 
-    let err = load(&fixture("detach.yml"), &ctx, &env)
-        .unwrap_err()
-        .to_string();
-    assert!(err.contains("`pre` option"));
-    assert!(err.contains("on_project_start"));
+    let detached_fixture = fixture("detach.yml");
+    let detached = load(&detached_fixture, &ctx, &env).unwrap();
+    assert!(!detached.attach());
 
-    for (config, expected_hint) in [
-        ("name: x\nrbenv: 2.0.0\nwindows:\n  - a: b\n", "pre_window"),
-        ("name: x\ntabs:\n  - a: b\n", "windows"),
-        (
-            "name: x\ncli_args: -f x\nwindows:\n  - a: b\n",
-            "tmux_options",
-        ),
-        (
-            "name: x\npost: cmd\nwindows:\n  - a: b\n",
-            "on_project_stop",
-        ),
-    ] {
-        let err = load(config, &ctx, &env).unwrap_err().to_string();
-        assert!(err.contains(expected_hint), "{err}");
-    }
+    let aliases = load(
+        "project_name: legacy\nproject_root: ~/legacy\ncli_args: -f legacy.conf\n\
+         rbenv: 2.0.0\nrvm: ruby-3\npre: ignored\npost: ignored\npre_tab: ignored\n\
+         tabs:\n  - editor: vim\n",
+        &ctx,
+        &env,
+    )
+    .unwrap();
+    assert_eq!(aliases.name().as_deref(), Some("legacy"));
+    assert_eq!(aliases.root().as_deref(), Some("/home/test/legacy"));
+    assert_eq!(aliases.tmux(), "tmux -f legacy.conf");
+    assert_eq!(aliases.windows().len(), 1);
 
-    let err = load(
+    let wemux = load(
         "name: x\ntmux_command: wemux\nwindows:\n  - a: b\n",
         &ctx,
         &env,
     )
-    .unwrap_err()
-    .to_string();
-    assert_eq!(err, "wemux is not supported by bootmux.");
+    .unwrap();
+    assert_eq!(wemux.tmux_command(), "wemux");
+    assert!(wemux.new_session_command().unwrap().starts_with("wemux "));
+}
+
+#[test]
+fn startup_pane_is_logical_and_respects_tmux_pane_base_index() {
+    let env = test_env();
+    let ctx = MockTmux {
+        pane_base_index: 1,
+        ..Default::default()
+    };
+    let project = load(
+        "name: startup\nstartup_window: logs\nstartup_pane: 1\nwindows:\n  - logs:\n      panes: [one, two]\n",
+        &ctx,
+        &env,
+    )
+    .unwrap();
+    assert_eq!(
+        project.startup_pane_command(),
+        "tmux select-pane -t startup:logs.2"
+    );
+
+    let named = load(
+        "name: startup\nstartup_window: logs\nstartup_pane: watcher\nwindows:\n  - logs:\n      panes:\n        - shell: one\n        - watcher: two\n",
+        &ctx,
+        &env,
+    )
+    .unwrap();
+    assert_eq!(
+        named.startup_pane_command(),
+        "tmux select-pane -t startup:logs.2"
+    );
+}
+
+#[test]
+fn startup_targets_shell_escape_named_windows() {
+    let env = test_env();
+    let ctx = MockTmux {
+        base_index: 1,
+        pane_base_index: 1,
+        ..Default::default()
+    };
+    for name in ["logs view", "owner's logs"] {
+        let config = format!(
+            "name: startup target\nstartup_window: \"{name}\"\nwindows:\n  - \"{name}\":\n      panes: [one, two]\n"
+        );
+        let project = load(&config, &ctx, &env).unwrap();
+        let expected_window = bootmux::shellwords::escape(name);
+        assert_eq!(
+            project.startup_window(),
+            format!("startup\\ target:{expected_window}")
+        );
+        assert_eq!(
+            project.startup_pane_command(),
+            format!("tmux select-pane -t startup\\ target:{expected_window}.1")
+        );
+        let rendered = script::render_start(&project);
+        assert!(rendered.contains(&format!(
+            "tmux select-window -t startup\\ target:{expected_window}"
+        )));
+    }
 }
 
 #[test]
@@ -207,6 +261,72 @@ fn respects_attach_false_and_force_flags() {
     .unwrap_err()
     .to_string();
     assert_eq!(err, "Cannot force_attach and force_detach at the same time");
+}
+
+#[test]
+fn attach_matches_mux_scalar_false_values() {
+    let env = test_env();
+    let ctx = MockTmux::default();
+    for value in ["false", "0", "\"false\"", "\"0\""] {
+        let config = format!("name: detached\nattach: {value}\nwindows:\n  - a: b\n");
+        assert!(!load(&config, &ctx, &env).unwrap().attach(), "{value}");
+    }
+    for value in [
+        "true",
+        "1",
+        "\"true\"",
+        "\"False\"",
+        "False",
+        "FALSE",
+        "+0",
+        "00",
+        "0x0",
+        "0.0",
+    ] {
+        let config = format!("name: attached\nattach: {value}\nwindows:\n  - a: b\n");
+        assert!(load(&config, &ctx, &env).unwrap().attach(), "{value}");
+    }
+}
+
+#[test]
+fn deprecated_alias_conflicts_are_resolved_in_document_order() {
+    let env = test_env();
+    let ctx = MockTmux::default();
+
+    let legacy_last = load(
+        "name: modern\nproject_name: legacy\nroot: /modern\nproject_root: /legacy\n\
+         tmux_options: -L modern\ncli_args: -L legacy\nwindows:\n  - modern: echo modern\n\
+         tabs:\n  - legacy: echo legacy\n",
+        &ctx,
+        &env,
+    )
+    .unwrap();
+    assert_eq!(legacy_last.unescaped_name().as_deref(), Some("legacy"));
+    assert_eq!(legacy_last.root_raw().as_deref(), Some("/legacy"));
+    assert_eq!(legacy_last.tmux(), "tmux -L legacy");
+    assert_eq!(legacy_last.windows()[0].name.as_deref(), Some("legacy"));
+
+    let modern_last = load(
+        "project_name: legacy\nname: modern\nproject_root: /legacy\nroot: /modern\n\
+         cli_args: -L legacy\ntmux_options: -L modern\ntabs:\n  - legacy: echo legacy\n\
+         windows:\n  - modern: echo modern\n",
+        &ctx,
+        &env,
+    )
+    .unwrap();
+    assert_eq!(modern_last.unescaped_name().as_deref(), Some("modern"));
+    assert_eq!(modern_last.root_raw().as_deref(), Some("/modern"));
+    assert_eq!(modern_last.tmux(), "tmux -L modern");
+    assert_eq!(modern_last.windows()[0].name.as_deref(), Some("modern"));
+
+    let invalid_last = load(
+        "name: valid\nproject_name: [invalid]\ntabs:\n  - kept: echo kept\nwindows: []\n",
+        &ctx,
+        &env,
+    )
+    .unwrap();
+    assert_eq!(invalid_last.unescaped_name().as_deref(), Some("valid"));
+    assert_eq!(invalid_last.windows()[0].name.as_deref(), Some("kept"));
 }
 
 #[test]
@@ -270,6 +390,49 @@ fn append_mode_skips_session_creation_and_offsets_windows() {
     assert!(!rendered.contains("new-session"));
     assert!(!rendered.contains("attach-session"));
     assert!(rendered.contains("new-window  -k -t existing:4 -n extra"));
+}
+
+#[test]
+fn herdr_style_pane_chain_also_renders_native_tmux_splits() {
+    let env = test_env();
+    let ctx = MockTmux::default();
+    let config = r#"
+name: chain
+attach: false
+windows:
+  - app:
+      panes:
+        - editor:
+            command: nvim
+        - server:
+            split: right
+            ratio: 0.65
+            commands: [npm run dev]
+        - logs:
+            split: down
+            command: tail -f app.log
+"#;
+    let project = load(config, &ctx, &env).unwrap();
+    let rendered = script::render_start(&project);
+    assert!(rendered.contains("nvim C-m"));
+    assert!(rendered.contains("npm\\ run\\ dev C-m"));
+    assert!(rendered.contains("tail\\ -f\\ app.log C-m"));
+    assert!(rendered.contains("splitw  -h -p 35 -t chain:0.0"));
+    assert!(rendered.contains("splitw  -v -p 50 -t chain:0.1"));
+    assert!(!rendered.contains("select-layout -t chain:0"));
+
+    let invalid = r#"
+name: chain
+windows:
+  - app:
+      layout: tiled
+      panes:
+        - editor: { command: nvim }
+"#;
+    assert!(load(invalid, &ctx, &env)
+        .unwrap_err()
+        .to_string()
+        .contains("cannot be combined"));
 }
 
 #[test]
@@ -389,5 +552,5 @@ windows:
     let project = load(config, &ctx, &env).unwrap();
     let rendered = script::render_start(&project);
     assert!(rendered.contains("send-keys -t prewin:0.0 rbenv\\ shell\\ 2.0.0 C-m"));
-    assert!(rendered.contains("send-keys -t prewin:0.0 echo\\ a\\ \\&\\&\\ echo\\ b C-m"));
+    assert!(rendered.contains("send-keys -t prewin:0.0 echo\\ a\\;\\ echo\\ b C-m"));
 }

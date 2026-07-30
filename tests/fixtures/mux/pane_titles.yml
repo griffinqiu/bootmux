@@ -1,0 +1,13 @@
+# Tests pane title configuration
+name: pane_titles
+root: ~/test
+enable_pane_titles: true
+pane_title_position: bottom
+pane_title_format: " #T "
+windows:
+  - editor:
+      layout: main-vertical
+      panes:
+        - Editor: vim
+        - Shell: bash
+        - Logs: tail -f /var/log/syslog

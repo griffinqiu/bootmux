@@ -1,0 +1,19 @@
+# Tests pane synchronization
+name: synchronize
+root: ~/test
+windows:
+  - sync_before:
+      synchronize: before
+      panes:
+        - echo "pane 1"
+        - echo "pane 2"
+        - echo "pane 3"
+  - sync_after:
+      synchronize: after
+      panes:
+        - echo "pane 1"
+        - echo "pane 2"
+  - no_sync:
+      panes:
+        - echo "independent pane 1"
+        - echo "independent pane 2"

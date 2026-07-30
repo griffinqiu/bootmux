@@ -1,0 +1,10 @@
+# Tests all project hooks
+name: hooks
+root: ~/test
+on_project_start: echo "project start"
+on_project_first_start: echo "first start"
+on_project_restart: echo "restart"
+on_project_exit: echo "exit"
+on_project_stop: echo "stop"
+windows:
+  - main: echo "main window"

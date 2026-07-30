@@ -1,0 +1,5 @@
+# Tests emoji as project name
+name: "\U0001F369"
+root: ~/
+windows:
+  - emoji: echo emoji

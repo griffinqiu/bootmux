@@ -1,0 +1,33 @@
+# Tests deprecated field names that should still work
+project_name: sample
+project_root: ~/test
+socket_name: foo
+pre: sudo /etc/rc.d/mysqld start
+rbenv: 2.0.0-p247
+cli_args: -f ~/.tmux.mac.conf
+tabs:
+  - editor:
+      pre:
+        - echo "I get run in each pane, before each pane command!"
+        -
+      layout: main-vertical
+      panes:
+        - vim
+        -
+        - top
+  - shell: git pull
+  - guard:
+      layout: tiled
+      pre:
+        - echo "I get run in each pane."
+        - echo "Before each pane command!"
+      panes:
+        -
+        -
+        -
+  - database: bundle exec rails db
+  - server: bundle exec rails s
+  - logs: tail -f log/development.log
+  - console: bundle exec rails c
+  - capistrano:
+  - server2: ssh user@example.com

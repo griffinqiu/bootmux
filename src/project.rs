@@ -10,7 +10,10 @@ use crate::template;
 use crate::tmux::TmuxContext;
 use crate::util::expand_path;
 use crate::window::Window;
-use crate::yaml_ext::{get, get_string, join_or_string, scalar_to_string, truthy};
+use crate::yaml_ext::{
+    get, get_aliased_nonempty_sequence, get_aliased_scalar, join_or_string, mux_attach, parse,
+    scalar_to_string, truthy,
+};
 
 pub const HOOK_ON_PROJECT_START: &str = "on_project_start";
 pub const HOOK_ON_PROJECT_FIRST_START: &str = "on_project_first_start";
@@ -36,10 +39,12 @@ pub fn parse_settings(raw_args: Vec<String>) -> (HashMap<String, String>, Vec<St
     let mut args = Vec::new();
     for arg in raw_args {
         match arg.split_once('=') {
-            Some((key, value)) => {
-                settings.insert(key.to_string(), value.to_string());
+            Some((key, value)) if !key.is_empty() => {
+                settings
+                    .entry(key.to_string())
+                    .or_insert_with(|| value.to_string());
             }
-            None => args.push(arg),
+            _ => args.push(arg),
         }
     }
     (settings, args)
@@ -72,12 +77,10 @@ impl<'a> Project<'a> {
         env: &'a Env,
     ) -> Result<Project<'a>> {
         let rendered = template::render_config(content, settings, args, env)?;
-        let mut yaml: Value = serde_norway::from_str(&rendered)
-            .map_err(|e| anyhow!("Failed to parse config file: {e}"))?;
+        let mut yaml: Value =
+            parse(&rendered).map_err(|e| anyhow!("Failed to parse config file: {e}"))?;
         yaml.apply_merge()
             .map_err(|e| anyhow!("Failed to parse config file: {e}"))?;
-
-        check_unsupported_options(&yaml)?;
 
         let mut project = Project {
             yaml,
@@ -128,11 +131,9 @@ impl<'a> Project<'a> {
                 Some(current)
             }
         } else {
-            self.opts
-                .custom_name
-                .clone()
-                .or_else(|| get_string(&self.yaml, "project_name"))
-                .or_else(|| get_string(&self.yaml, "name"))
+            self.opts.custom_name.clone().or_else(|| {
+                get_aliased_scalar(&self.yaml, "name", &["project_name"]).and_then(scalar_to_string)
+            })
         };
 
         raw_name
@@ -145,8 +146,8 @@ impl<'a> Project<'a> {
     }
 
     pub fn root_raw(&self) -> Option<String> {
-        get_string(&self.yaml, "project_root")
-            .or_else(|| get_string(&self.yaml, "root"))
+        get_aliased_scalar(&self.yaml, "root", &["project_root"])
+            .and_then(scalar_to_string)
             .filter(|root| !root.is_empty())
             .map(|root| expand_path(&root, &self.env.cwd.to_string_lossy(), &self.env.home))
     }
@@ -156,11 +157,7 @@ impl<'a> Project<'a> {
     }
 
     pub fn attach(&self) -> bool {
-        let yaml_attach = match get(&self.yaml, "attach") {
-            None | Some(Value::Null) => true,
-            Some(Value::Bool(b)) => *b,
-            Some(_) => true,
-        };
+        let yaml_attach = mux_attach(get(&self.yaml, "attach"));
         self.opts.force_attach || (!self.opts.force_detach && yaml_attach)
     }
 
@@ -181,7 +178,7 @@ impl<'a> Project<'a> {
     }
 
     fn tmux_options_part(&self) -> String {
-        let options = get(&self.yaml, "tmux_options");
+        let options = get_aliased_scalar(&self.yaml, "tmux_options", &["cli_args"]);
         if truthy(options) {
             let value = options.and_then(scalar_to_string).unwrap_or_default();
             format!(" {}", value.trim())
@@ -224,30 +221,57 @@ impl<'a> Project<'a> {
             .unwrap_or(0)
     }
 
-    // Raw injection like Ruby: startup_window/startup_pane values are not
-    // escaped, and may be a window name or an index.
+    // startup_window may be a name or an index.
     pub fn startup_window(&self) -> String {
         let window = match get(&self.yaml, "startup_window") {
-            value if truthy(value) => value.and_then(scalar_to_string).unwrap_or_default(),
+            value if truthy(value) => {
+                shellwords::escape(&value.and_then(scalar_to_string).unwrap_or_default())
+            }
             _ => self.base_index().to_string(),
         };
         format!("{}:{}", self.name().unwrap_or_default(), window)
     }
 
     pub fn startup_pane(&self) -> String {
-        let pane = match get(&self.yaml, "startup_pane") {
-            Some(Value::String(s)) if !s.is_empty() => s.clone(),
-            Some(Value::Number(n)) => {
-                scalar_to_string(&Value::Number(n.clone())).unwrap_or_default()
-            }
-            Some(Value::Bool(true)) => "true".to_string(),
-            _ => self.pane_base_index().to_string(),
-        };
+        let configured = get(&self.yaml, "startup_pane");
+        let pane = self
+            .startup_window_spec()
+            .map(
+                |window| match configured.filter(|value| truthy(Some(value))) {
+                    Some(value) => scalar_to_string(value)
+                        .and_then(|value| value.trim().parse::<i64>().ok())
+                        .map(|index| index + self.pane_base_index())
+                        .unwrap_or_else(|| window.pane_index(Some(value), self)),
+                    None => window.focused_pane_index(self),
+                },
+            )
+            .unwrap_or_else(|| self.pane_base_index())
+            .to_string();
         format!("{}.{}", self.startup_window(), pane)
     }
 
     pub fn startup_pane_command(&self) -> String {
         format!("{} select-pane -t {}", self.tmux(), self.startup_pane())
+    }
+
+    fn startup_window_spec(&self) -> Option<&Window> {
+        let Some(configured) = get(&self.yaml, "startup_window")
+            .filter(|value| truthy(Some(value)))
+            .and_then(scalar_to_string)
+        else {
+            return self.windows.first();
+        };
+
+        if let Ok(target_index) = configured.parse::<i64>() {
+            let logical_index = target_index - self.base_index();
+            return usize::try_from(logical_index)
+                .ok()
+                .and_then(|index| self.windows.get(index));
+        }
+
+        self.windows.iter().find(|window| {
+            window.name.as_deref().map(shellwords::unescape).as_deref() == Some(configured.as_str())
+        })
     }
 
     pub fn pre_window(&self) -> Option<String> {
@@ -346,48 +370,12 @@ impl<'a> Project<'a> {
 }
 
 fn build_windows(yaml: &Value) -> Result<Vec<Window>> {
-    let entries = match get(yaml, "windows") {
-        Some(Value::Sequence(entries)) => entries.as_slice(),
-        _ => &[],
-    };
+    let entries = get_aliased_nonempty_sequence(yaml, "windows", &["tabs"]).unwrap_or(&[]);
     entries
         .iter()
         .enumerate()
         .map(|(index, entry)| Window::build(entry, index))
         .collect()
-}
-
-fn check_unsupported_options(yaml: &Value) -> Result<()> {
-    let unsupported: [(&str, &str); 7] = [
-        ("rbenv", "use `pre_window: rbenv shell <version>` instead"),
-        ("rvm", "use `pre_window: rvm use <version>` instead"),
-        ("pre_tab", "rename it to `pre_window`"),
-        ("tabs", "rename it to `windows`"),
-        ("cli_args", "rename it to `tmux_options`"),
-        (
-            "pre",
-            "use the `on_project_start` / `on_project_first_start` hooks instead",
-        ),
-        (
-            "post",
-            "use the `on_project_stop` / `on_project_exit` hooks instead",
-        ),
-    ];
-
-    for (key, hint) in unsupported {
-        if get(yaml, key).is_some() {
-            bail!(
-                "The `{key}` option was deprecated in tmuxinator and is not supported by \
-                 bootmux: {hint}."
-            );
-        }
-    }
-
-    if get_string(yaml, "tmux_command").as_deref() == Some("wemux") {
-        bail!("wemux is not supported by bootmux.");
-    }
-
-    Ok(())
 }
 
 #[cfg(test)]
@@ -400,9 +388,14 @@ mod tests {
             "foo=bar".to_string(),
             "extra".to_string(),
             "a=b=c".to_string(),
+            "=not-a-setting".to_string(),
+            "foo=ignored-second-value".to_string(),
         ]);
         assert_eq!(settings.get("foo").unwrap(), "bar");
         assert_eq!(settings.get("a").unwrap(), "b=c");
-        assert_eq!(args, vec!["extra".to_string()]);
+        assert_eq!(
+            args,
+            vec!["extra".to_string(), "=not-a-setting".to_string()]
+        );
     }
 }

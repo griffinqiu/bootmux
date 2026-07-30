@@ -1,0 +1,37 @@
+# Comprehensive sample config matching tmuxinator's sample.yml
+name: sample
+root: ~/test
+socket_name: foo
+pre_window: rbenv shell 2.0.0-p247
+tmux_options: -f ~/.tmux.mac.conf
+windows:
+  - editor:
+      pre:
+        - echo "I get run in each pane, before each pane command!"
+        -
+      layout: main-vertical
+      panes:
+        - vim
+        -
+        - top
+        - pane_with_multiple_commands:
+            - ssh server
+            - echo "Hello"
+  - shell:
+    - git pull
+    - git merge
+  - guard:
+      layout: tiled
+      pre:
+        - echo "I get run in each pane."
+        - echo "Before each pane command!"
+      panes:
+        -
+        -
+        -
+  - database: bundle exec rails db
+  - server: bundle exec rails s
+  - logs: tail -f log/development.log
+  - console: bundle exec rails c
+  - capistrano:
+  - server2: ssh user@example.com

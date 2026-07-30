@@ -136,10 +136,14 @@ pub fn render_start(project: &Project) -> String {
                     if !pane.is_last(window) {
                         w.slot("  ", Some(&pane.split_command(window, project)));
                     }
-                    w.slot("  ", Some(&window.tiled_layout_command(project)));
+                    if !window.is_pane_chain() {
+                        w.slot("  ", Some(&window.tiled_layout_command(project)));
+                    }
                 }
                 w.blank();
-                w.slot("  ", Some(&window.layout_command(project)));
+                if !window.is_pane_chain() {
+                    w.slot("  ", Some(&window.layout_command(project)));
+                }
                 w.slot("  ", Some(&window.focus_pane_command(project)));
             }
             w.blank();

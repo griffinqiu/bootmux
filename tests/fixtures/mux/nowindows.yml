@@ -1,0 +1,3 @@
+# Tests config with no windows (should fail validation)
+name: no_windows
+root: ~/

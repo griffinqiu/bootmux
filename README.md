@@ -1,150 +1,172 @@
 # bootmux
 
-Manage complex tmux sessions from simple YAML project files — a Rust reimplementation of [tmuxinator](https://github.com/tmuxinator/tmuxinator).
+English | [简体中文](README.zh-CN.md)
+
+Run one tmuxinator-style YAML project in either
+[tmux](https://github.com/tmux/tmux) or [Herdr](https://herdr.dev/).
+bootmux is a single Rust binary: it does not require Ruby and it does not hide
+tmux inside a Herdr pane.
 
 ```sh
 bootmux start myproject
 ```
 
-One command, and your editor, server, logs, and shell windows are laid out exactly the way you left them.
-
 ## Why bootmux?
 
-tmuxinator is a great tool with one structural problem: it's a Ruby gem.
-
-- **No Ruby required.** tmuxinator needs a Ruby interpreter and a gem installation, which drags in rbenv/rvm/system-Ruby version juggling — ironically, often the very thing you're trying to manage *with* tmux sessions. bootmux is a single ~3 MB static binary with zero runtime dependencies. Drop it on a server, in a container, or on a fresh laptop and it just runs.
-- **Instant startup.** No interpreter boot, no gem loading. Session startup latency is dominated by tmux itself, not the tool.
-- **Drop-in compatible.** bootmux reads the **same YAML project files** from the **same config directories** (`~/.config/tmuxinator`, `~/.tmuxinator`, `$TMUXINATOR_CONFIG`, `./.tmuxinator.yml`). Your existing projects work unchanged — switching costs nothing, and switching back costs nothing.
-- **Verified, not "inspired by".** The generated tmux script is compared **byte-for-byte** against tmuxinator's own golden test snapshots in CI. This is a port with a proof, not a lookalike.
-- **Safer templating.** tmuxinator embeds ERB in YAML, which means every project file can execute arbitrary Ruby. bootmux uses sandboxed [MiniJinja](https://github.com/mitsuhiko/minijinja) templates instead: variables, conditionals, and loops — not code execution.
+- **One project format, two native backends.** A project becomes a tmux session
+  or a Herdr workspace; windows become tmux windows or Herdr tabs, and panes
+  stay real panes in the selected multiplexer.
+- **tmuxinator paths and schema.** Existing projects can remain in
+  `~/.config/tmuxinator`, `~/.tmuxinator`, `$TMUXINATOR_CONFIG`, or
+  `./.tmuxinator.yml`. See the documented
+  [compatibility boundaries](docs/mux-compatibility.md).
+- **No executable templates.** MiniJinja provides variables, conditionals, and
+  loops without evaluating Ruby. The non-executable settings placeholder used
+  by [willfish/mux](https://github.com/willfish/mux) is also supported. Project
+  pane commands and lifecycle hooks are still shell commands, so only run
+  trusted YAML.
+- **Tested compatibility.** Three representative tmux renderings are checked
+  byte-for-byte against tmuxinator-derived golden snapshots. A separate
+  19-file matrix exercises the pinned mux fixtures on both backends.
 
 ## Requirements
 
-- tmux >= 2.6 (2017). Older versions trigger a warning (`--suppress-tmux-version-warning` silences it).
-- `$EDITOR` and `$SHELL` set — check your setup with `bootmux doctor`.
+- A Unix-like operating system
+- At least one multiplexer:
+  - tmux >= 2.6
+  - Herdr >= 0.7.5 using socket protocol 17
+- Rust >= 1.89 to build from source
+- `$SHELL` and `$EDITOR` for normal project and editor workflows
+- Optional: `fzf` for `bootmux picker`
 
-## Installation
+Install from this checkout:
 
 ```sh
-# From source
 cargo install --path .
-
-# From crates.io (once published)
-cargo install bootmux
+bootmux doctor
 ```
 
-Shell completions live in `completion/bootmux.{bash,zsh,fish}` — source the one for your shell.
+Static Bash, Zsh, and Fish completions are in `completion/`.
 
 ## Quick start
 
-```sh
-bootmux new myproject          # create a project file and open it in $EDITOR
-bootmux start myproject        # build the session and attach
-bootmux myproject              # shorthand for start
-bootmux stop myproject         # kill the session
-```
-
-All commands:
-
-```sh
-bootmux new myproject SESSION  # generate a project file from a running session
-bootmux start myproject -n alt # same project under a different session name
-bootmux start myproject --append   # append this project's windows to the current session
-bootmux debug myproject        # print the generated shell script instead of running it
-bootmux stop-all               # stop every active bootmux-managed session
-bootmux local                  # start from ./.tmuxinator.yml (alias: bootmux .)
-bootmux list                   # list projects (-a: active only, -n: one per line)
-bootmux edit / open / copy / delete / implode / doctor / version
-```
-
-Project files are searched in `$TMUXINATOR_CONFIG`, then `$XDG_CONFIG_HOME/tmuxinator` (default `~/.config/tmuxinator`), then `~/.tmuxinator` — recursively, matched by file basename.
-
-## Project files
-
-The full tmuxinator schema is supported:
+Create `~/.config/tmuxinator/myapp.yml`:
 
 ```yaml
 name: myapp
 root: ~/code/myapp
 
-# Runs in every window and pane before its commands
-pre_window: rbenv shell 3.3.0
-
-# Lifecycle hooks (string or list)
-on_project_start: docker compose up -d
-on_project_first_start: bin/setup
-on_project_restart: echo "welcome back"
-on_project_stop: docker compose down
-on_project_exit: echo "bye"
-
-tmux_options: -f ~/.tmux.custom.conf
-socket_name: myapp          # or socket_path: /path/to/socket
-startup_window: editor      # window selected on startup (name or index)
-startup_pane: 1
-attach: true                # set false to build the session without attaching
-
-enable_pane_titles: true
-pane_title_position: top    # top | bottom | off
-pane_title_format: "[ #T ]"
-
 windows:
   - editor:
-      root: app             # per-window root, relative to the project root
-      layout: main-vertical # preset or custom layout string
-      pre:                  # runs in each pane of this window
-        - echo "hello pane"
-      synchronize: after    # before | after | false
-      focused_pane: editor  # by pane title or zero-based index
       panes:
-        - editor: vim       # titled pane
-        - guard             # plain pane
-        - [git fetch, git status]  # one pane running several commands
-  - shell:                  # window with commands, no panes
-      - git pull
-  - logs: tail -f log/development.log
+        - nvim
+        - git status
+  - server: npm run dev
+  - logs: tail -f logs/development.log
 ```
 
-### Templating
+Replace `root` with an existing directory and use commands installed on your
+machine before starting the example.
 
-Project files are rendered with MiniJinja (Jinja2 syntax) before YAML parsing:
-
-- `settings` — `key=value` command-line arguments: `bootmux start myapp workspace=/code`
-- `args` — remaining positional arguments
-- `env` — process environment variables
-
-```yaml
-name: {{ settings.session | default('myapp') }}
-root: {{ env.HOME }}/code/{{ args[0] }}
-```
-
-Undefined variables render as empty strings, matching tmuxinator's ERB behavior.
-
-## Migrating from tmuxinator
-
-Most projects need no changes at all. The differences:
-
-| tmuxinator | bootmux |
-|---|---|
-| ERB templating (`<%= @settings["x"] %>`, `<%= @args[0] %>`, `<%= ENV["V"] %>`) | MiniJinja: `{{ settings.x }}`, `{{ args[0] }}`, `{{ env.V }}`. Files containing `<%` are rejected with a migration hint. |
-| Deprecated options `rbenv`, `rvm`, `pre_tab`, `tabs`, `cli_args`, top-level `pre`/`post` (warnings) | Rejected with an error naming the replacement (`pre_window`, `windows`, `tmux_options`, project hooks). Window-level `pre` is still supported. |
-| wemux support | Not supported. |
-| tmux 1.5+ | tmux >= 2.6 only. |
-
-Everything else is kept faithfully, including the quirks: project names have `.` and `:` replaced by `_`, the first window is re-created with `new-window -k`, every pane split is followed by a `tiled` re-layout to prevent "no space for new pane", and `base-index`/`pane-base-index` are read from your tmux configuration.
-
-## How it works
-
-Like tmuxinator, bootmux is not a daemon. It renders your project file into a plain shell script of tmux commands (`new-session`, `new-window`, `splitw`, `send-keys`, `select-layout`, ...) and `exec`s it. `bootmux debug` shows you that exact script — there is no hidden state and nothing magic to trust.
-
-## Development
+Preview the selected backend, then start and stop the project:
 
 ```sh
-cargo test                              # unit + golden-snapshot + CLI integration tests
-cargo test --test smoke -- --ignored    # end-to-end against a real tmux (isolated socket)
+bootmux --backend tmux debug myapp
+bootmux --backend tmux start myapp
+bootmux --backend tmux stop myapp
+
+bootmux --backend herdr debug myapp
+bootmux --backend herdr start myapp
+bootmux --backend herdr stop myapp
 ```
 
-The golden tests in `tests/golden.rs` compare generated scripts byte-for-byte against snapshot files copied from tmuxinator's own test suite (`tests/snapshots/2.6/`). If you touch `src/script.rs`, those tests are the contract.
+`debug` validates and renders the backend plan without creating the project
+topology. Herdr debug does not contact or start a server; tmux debug may start a
+tmux server to read `base-index`, `pane-base-index`, and active-session state.
 
-## License
+Once the project is working, the explicit backend is optional. bootmux resolves
+it in this order:
 
-MIT. tmuxinator is © the tmuxinator contributors (MIT); bootmux is an independent reimplementation.
+1. `--backend tmux|herdr`
+2. the active multiplexer environment
+3. `default_backend` in bootmux's global settings
+4. tmux
+
+```sh
+bootmux config set default-backend herdr
+bootmux myapp                 # shorthand for: bootmux start myapp
+bootmux                       # local project when present, otherwise the fzf picker
+```
+
+An active Herdr popup takes precedence over inherited tmux variables. If tmux
+and Herdr are genuinely nested and bootmux cannot identify the foreground
+owner, it fails with a request for an explicit backend.
+
+## Existing tmuxinator or mux project?
+
+Keep the file in its current directory and preflight it on both backends:
+
+```sh
+bootmux --backend tmux debug PROJECT
+bootmux --backend herdr debug PROJECT
+```
+
+Then review the [compatibility matrix and migration
+steps](docs/mux-compatibility.md) before the first Herdr start.
+
+## Backend overview
+
+| Capability | tmux | Herdr |
+|---|---|---|
+| Native project container | Session | Workspace |
+| Window mapping | Window | Tab |
+| Pane commands and working directories | Yes | Yes |
+| Named and custom sockets | Yes | Yes |
+| tmux preset layouts | Native | Translated to a BSP plan |
+| Serialized tmux layouts | Native | Strictly parsed and translated |
+| `synchronize` | Yes | Truthy values rejected: no equivalent input semantics |
+| `tmux_options`, `tmux_command`, pane-border fields | Supported | Warned and ignored |
+| Stop identity | Config-rendered session/socket; no ownership state | Persisted exact endpoint/config/name/root ownership |
+
+[Herdr session restore](https://herdr.dev/docs/session-state/) restores terminal
+topology and working directories, not arbitrary child process state. Reusing a
+matching workspace runs `on_project_restart`; it does not rerun every pane
+command. See [Backends and lifecycle](docs/backends.md) before relying on reboot
+recovery or `stop-all`.
+
+A normal Herdr start maps one project to one workspace. `--append` instead adds
+tabs to the active workspace and does not create an independently stoppable
+project.
+
+## Documentation
+
+- Start here: [Getting started](docs/getting-started.md)
+- End-to-end guide: [Complete user manual](docs/manual.md)
+- Reference: [CLI](docs/cli.md), [project configuration](docs/configuration.md),
+  [backends and lifecycle](docs/backends.md), and
+  [mux compatibility](docs/mux-compatibility.md)
+- Contributors: [Development and verification](docs/development.md)
+
+## Picker bindings
+
+`fzf` is only required for the picker. Print a safe snippet and paste it into
+the matching multiplexer configuration:
+
+```sh
+bootmux bindings tmux
+bootmux bindings herdr
+```
+
+The tmux snippet uses a normal window so it remains compatible with tmux 2.6.
+The Herdr snippet opens an 80% popup.
+
+## License and credits
+
+bootmux is MIT-licensed and is an independent reimplementation. tmuxinator is
+copyright its contributors and MIT-licensed.
+
+The Herdr backend used
+[willfish/mux at `927030b`](https://github.com/willfish/mux/tree/927030bb88e4b16b6671f68610980491ffbd2c81)
+as a behavioral reference; its implementation was not copied. The upstream
+YAML fixtures are vendored with their
+[source and license attribution](tests/fixtures/mux/README.md).

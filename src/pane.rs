@@ -1,5 +1,5 @@
 use crate::project::Project;
-use crate::window::Window;
+use crate::window::{PaneChainDirection, Window};
 
 pub struct Pane {
     pub index: usize,
@@ -60,6 +60,19 @@ impl Pane {
             .root(project)
             .map(|root| format!("-c {root}"))
             .unwrap_or_default();
+        if let Some((direction, existing_share)) = window.pane_chain_split(self.index + 1) {
+            let direction = match direction {
+                PaneChainDirection::Right => "-h",
+                PaneChainDirection::Down => "-v",
+            };
+            let new_pane_percent = ((1.0 - existing_share) * 100.0).round() as u8;
+            return format!(
+                "{} splitw {} {direction} -p {new_pane_percent} -t {}",
+                project.tmux(),
+                path,
+                self.target(window, project)
+            );
+        }
         format!(
             "{} splitw {} -t {}",
             project.tmux(),

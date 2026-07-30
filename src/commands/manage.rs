@@ -27,7 +27,7 @@ fn open_in_editor(env: &Env, path: &str) -> Result<()> {
         .arg(format!("$EDITOR {path}"))
         .status();
     if !status.map(|s| s.success()).unwrap_or(false) {
-        super::info::doctor(env)?;
+        super::info::doctor_environment(env)?;
     }
     Ok(())
 }

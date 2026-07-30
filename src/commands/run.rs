@@ -7,6 +7,7 @@ use crate::config::{self, ProjectFileQuery};
 use crate::env::Env;
 use crate::project::{parse_settings, LoadOptions, Project};
 use crate::script;
+use crate::settings::Backend;
 use crate::tmux::{TmuxContext, UNSUPPORTED_VERSION_MSG};
 use crate::util::{ask_yes, press_enter_to_continue, say_colored, Color};
 
@@ -23,7 +24,7 @@ pub struct StartParams {
 impl StartParams {
     // Ruby start_params: -p takes precedence; a positional name given
     // alongside it is shifted into the template args.
-    fn normalized(mut self) -> StartParams {
+    pub(crate) fn normalized(mut self) -> StartParams {
         if self.project_config.is_some() {
             if let Some(name) = self.project.take() {
                 self.args.insert(0, name);
@@ -32,7 +33,7 @@ impl StartParams {
         self
     }
 
-    fn load_options(&self) -> LoadOptions {
+    pub(crate) fn load_options(&self) -> LoadOptions {
         LoadOptions {
             custom_name: self.custom_name.clone(),
             force_attach: self.attach == Some(true),
@@ -91,11 +92,17 @@ fn warn_unsupported_version(ctx: &dyn TmuxContext, suppress: bool) {
     }
 }
 
-fn exec_script(script: String) -> Result<()> {
-    let error = std::process::Command::new("/bin/sh")
-        .arg("-c")
-        .arg(script)
-        .exec();
+fn shell_command(script: String, fail_fast: bool) -> std::process::Command {
+    let mut command = std::process::Command::new("/bin/sh");
+    if fail_fast {
+        command.arg("-e");
+    }
+    command.arg("-c").arg(script);
+    command
+}
+
+fn exec_script(script: String, fail_fast: bool) -> Result<()> {
+    let error = shell_command(script, fail_fast).exec();
     Err(anyhow!("failed to execute generated script: {error}"))
 }
 
@@ -105,14 +112,39 @@ pub fn start(
     params: StartParams,
     suppress_version_warning: bool,
 ) -> Result<()> {
+    start_with_backend(env, ctx, Backend::Tmux, params, suppress_version_warning)
+}
+
+pub fn start_with_backend(
+    env: &Env,
+    ctx: &dyn TmuxContext,
+    backend: Backend,
+    params: StartParams,
+    suppress_version_warning: bool,
+) -> Result<()> {
     let params = params.normalized();
+    if backend == Backend::Herdr {
+        return crate::herdr_backend::start(env, &params);
+    }
     warn_unsupported_version(ctx, suppress_version_warning);
     let project = create_from_params(env, ctx, &params)?;
-    exec_script(script::render_start(&project))
+    exec_script(script::render_start(&project), true)
 }
 
 pub fn debug(env: &Env, ctx: &dyn TmuxContext, params: StartParams) -> Result<()> {
+    debug_with_backend(env, ctx, Backend::Tmux, params)
+}
+
+pub fn debug_with_backend(
+    env: &Env,
+    ctx: &dyn TmuxContext,
+    backend: Backend,
+    params: StartParams,
+) -> Result<()> {
     let params = params.normalized();
+    if backend == Backend::Herdr {
+        return crate::herdr_backend::debug(env, &params);
+    }
     let project = create_from_params(env, ctx, &params)?;
     print!("{}", script::render_start(&project));
     Ok(())
@@ -125,26 +157,74 @@ pub fn stop(
     project_config: Option<String>,
     suppress_version_warning: bool,
 ) -> Result<()> {
-    // -p takes precedence over a named project when both are provided.
-    let name = if project_config.is_some() {
-        None
-    } else {
-        project
-    };
+    stop_with_backend(
+        env,
+        ctx,
+        Backend::Tmux,
+        project,
+        project_config,
+        Vec::new(),
+        suppress_version_warning,
+    )
+}
+
+pub fn stop_with_backend(
+    env: &Env,
+    ctx: &dyn TmuxContext,
+    backend: Backend,
+    mut project: Option<String>,
+    project_config: Option<String>,
+    mut args: Vec<String>,
+    suppress_version_warning: bool,
+) -> Result<()> {
+    // -p takes precedence over a named project when both are provided, and
+    // the first positional token becomes a template argument just like start.
+    if project_config.is_some() {
+        if let Some(value) = project.take() {
+            args.insert(0, value);
+        }
+    }
+    let (settings, args) = parse_settings(args);
+    if backend == Backend::Herdr {
+        return crate::herdr_backend::stop(env, project, project_config, &settings, &args);
+    }
     warn_unsupported_version(ctx, suppress_version_warning);
     let project = create_project(
         env,
         ctx,
-        name.as_deref(),
+        project.as_deref(),
         project_config.as_deref(),
-        &HashMap::new(),
-        &[],
+        &settings,
+        &args,
         LoadOptions::default(),
     )?;
-    exec_script(script::render_stop(&project))
+    exec_script(script::render_stop(&project), false)
 }
 
 pub fn local(env: &Env, ctx: &dyn TmuxContext, suppress_version_warning: bool) -> Result<()> {
+    local_with_backend(env, ctx, Backend::Tmux, suppress_version_warning)
+}
+
+pub fn local_with_backend(
+    env: &Env,
+    ctx: &dyn TmuxContext,
+    backend: Backend,
+    suppress_version_warning: bool,
+) -> Result<()> {
+    if backend == Backend::Herdr {
+        return crate::herdr_backend::start(
+            env,
+            &StartParams {
+                project: None,
+                args: Vec::new(),
+                attach: None,
+                custom_name: None,
+                project_config: None,
+                append: false,
+                no_pre_window: false,
+            },
+        );
+    }
     warn_unsupported_version(ctx, suppress_version_warning);
     let project = create_project(
         env,
@@ -155,10 +235,22 @@ pub fn local(env: &Env, ctx: &dyn TmuxContext, suppress_version_warning: bool) -
         &[],
         LoadOptions::default(),
     )?;
-    exec_script(script::render_start(&project))
+    exec_script(script::render_start(&project), true)
 }
 
 pub fn stop_all(env: &Env, ctx: &dyn TmuxContext, noconfirm: bool) -> Result<()> {
+    stop_all_with_backend(env, ctx, Backend::Tmux, noconfirm)
+}
+
+pub fn stop_all_with_backend(
+    env: &Env,
+    ctx: &dyn TmuxContext,
+    backend: Backend,
+    noconfirm: bool,
+) -> Result<()> {
+    if backend == Backend::Herdr {
+        return crate::herdr_backend::stop_all(env, noconfirm);
+    }
     let sessions = ctx.active_sessions();
     let active_configs = config::configs(env, Some((true, &sessions)));
 
@@ -196,4 +288,17 @@ pub fn stop_all(env: &Env, ctx: &dyn TmuxContext, noconfirm: bool) -> Result<()>
             .status()?;
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::shell_command;
+
+    #[test]
+    fn generated_scripts_abort_on_the_first_failed_command() {
+        let status = shell_command("false\nexit 0".to_string(), true)
+            .status()
+            .unwrap();
+        assert!(!status.success());
+    }
 }

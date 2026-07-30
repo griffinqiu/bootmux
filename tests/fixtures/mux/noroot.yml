@@ -1,0 +1,4 @@
+# Tests config without root directory
+name: noroot
+windows:
+  - test: echo foo

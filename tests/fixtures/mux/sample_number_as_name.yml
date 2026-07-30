@@ -1,0 +1,5 @@
+# Tests numeric project name
+name: 222
+root: ~/
+windows:
+  - number: echo number as name fixture
