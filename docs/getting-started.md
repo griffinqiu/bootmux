@@ -38,6 +38,13 @@ mise use -g cargo:bootmux@latest
 bootmux version
 ```
 
+Homebrew builds the tagged release and installs all three completion files:
+
+```sh
+brew install griffinqiu/tap/bootmux
+bootmux --version
+```
+
 Set `$SHELL` and `$EDITOR`. Install `fzf` only if you want the interactive
 picker.
 

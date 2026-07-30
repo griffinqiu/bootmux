@@ -102,6 +102,22 @@ bootmux version
 如果只想为某个项目固定 bootmux，请在项目中运行不带 `-g` 的
 `mise use cargo:bootmux@0.1.0`。
 
+### 使用 Homebrew 安装
+
+项目 tap 会从源码构建带 tag 的 release，并安装 Bash、Zsh 和 Fish 补全：
+
+```sh
+brew install griffinqiu/tap/bootmux
+bootmux --version
+```
+
+升级或卸载：
+
+```sh
+brew upgrade griffinqiu/tap/bootmux
+brew uninstall griffinqiu/tap/bootmux
+```
+
 ### 从源码 checkout 安装
 
 在仓库根目录运行：
@@ -140,8 +156,8 @@ bootmux 要求 Herdr 客户端和服务器相互兼容。它不会静默降级�
 
 ### Shell 补全
 
-Cargo 只会安装可执行文件。仓库/源码归档提供了面向项目和子命令的静态补全
-文件：
+Cargo 和 mise 只会安装可执行文件。Homebrew 会安装全部三种补全。仓库/源码
+归档提供了相同的面向项目和子命令的静态文件：
 
 ```text
 completion/bootmux.bash

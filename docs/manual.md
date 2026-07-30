@@ -106,6 +106,23 @@ bootmux version
 Use `mise use cargo:bootmux@0.1.0` without `-g` when a project should pin
 bootmux locally.
 
+### Install with Homebrew
+
+The project tap builds the tagged release from source and installs Bash, Zsh,
+and Fish completions:
+
+```sh
+brew install griffinqiu/tap/bootmux
+bootmux --version
+```
+
+Upgrade or uninstall it with:
+
+```sh
+brew upgrade griffinqiu/tap/bootmux
+brew uninstall griffinqiu/tap/bootmux
+```
+
 ### Install from a source checkout
 
 From the repository root:
@@ -147,8 +164,9 @@ downgrade from another protocol.
 
 ### Shell completion
 
-Cargo installs the executable only. The repository/source archive provides
-project/subcommand-oriented static completion files:
+Cargo and mise install the executable only. Homebrew installs all three
+completion files. The repository/source archive provides the same
+project/subcommand-oriented static files:
 
 ```text
 completion/bootmux.bash

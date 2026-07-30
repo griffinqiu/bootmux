@@ -57,6 +57,13 @@ mise use -g cargo:bootmux@latest
 bootmux version
 ```
 
+With Homebrew:
+
+```sh
+brew install griffinqiu/tap/bootmux
+bootmux --version
+```
+
 Or build this checkout instead of the crates.io release:
 
 ```sh
@@ -64,9 +71,10 @@ cargo install --path . --locked
 bootmux version
 ```
 
-Cargo installs the executable only. Static Bash, Zsh, and Fish completion
-files are in [`completion/`](completion/); copy the matching-version file from
-the source tree into your shell's completion directory.
+Cargo and mise install the executable only. Static Bash, Zsh, and Fish
+completion files are in [`completion/`](completion/); copy the
+matching-version file from the source tree into your shell's completion
+directory. The Homebrew formula installs all three completion files.
 
 After installation, check each backend you intend to use:
 

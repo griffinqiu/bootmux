@@ -56,6 +56,13 @@ mise use -g cargo:bootmux@latest
 bootmux version
 ```
 
+使用 Homebrew：
+
+```sh
+brew install griffinqiu/tap/bootmux
+bootmux --version
+```
+
 也可以构建当前 checkout，而不是安装 crates.io 版本：
 
 ```sh
@@ -63,9 +70,9 @@ cargo install --path . --locked
 bootmux version
 ```
 
-Cargo 只会安装可执行文件。静态 Bash、Zsh 和 Fish 补全脚本位于
+Cargo 和 mise 只会安装可执行文件。静态 Bash、Zsh 和 Fish 补全脚本位于
 [`completion/`](completion/)；请从相同版本的源码中把对应文件复制到 shell
-的补全目录。
+的补全目录。Homebrew Formula 会自动安装这三种补全脚本。
 
 安装后，请检查准备使用的每个后端：
 
