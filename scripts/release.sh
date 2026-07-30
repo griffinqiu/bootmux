@@ -99,15 +99,15 @@ cleanup() {
   fi
 
   if [[ -n "$temporary_tap_dir" && -d "$temporary_tap_dir" ]]; then
-    rm -r "$temporary_tap_dir"
+    rm -rf "$temporary_tap_dir"
   fi
 
   if [[ -n "$temporary_style_dir" && -d "$temporary_style_dir" ]]; then
-    rm -r "$temporary_style_dir"
+    rm -rf "$temporary_style_dir"
   fi
 
   if [[ -n "$temporary_formula_dir" && -d "$temporary_formula_dir" ]]; then
-    rm -r "$temporary_formula_dir"
+    rm -rf "$temporary_formula_dir"
   fi
 
   if [[ -n "$temporary_check_dir" && -n "$repo_root" ]]; then
@@ -118,11 +118,11 @@ cleanup() {
   fi
 
   if [[ -n "$temporary_check_parent" && -d "$temporary_check_parent" ]]; then
-    rm -r "$temporary_check_parent"
+    rm -rf "$temporary_check_parent"
   fi
 
   if [[ "$release_lock_acquired" == "true" && -d "$release_lock_dir" ]]; then
-    rm -r "$release_lock_dir"
+    rm -rf "$release_lock_dir"
   fi
 
   exit "$status"
@@ -383,7 +383,7 @@ run_formula_style() {
   temporary_style_dir="$(mktemp -d "${TMPDIR:-/tmp}/bootmux-brew-style.XXXXXX")"
   HOMEBREW_CACHE="$temporary_style_dir" HOMEBREW_NO_AUTO_UPDATE=1 \
     brew style "$formula"
-  rm -r "$temporary_style_dir"
+  rm -rf "$temporary_style_dir"
   temporary_style_dir=""
 }
 
@@ -814,7 +814,7 @@ publish_homebrew_formula() {
     local_formula_restore_needed=false
   fi
 
-  rm -r "$temporary_formula_dir"
+  rm -rf "$temporary_formula_dir"
   temporary_formula_dir=""
   prepared_formula=""
   prepared_formula_sha=""
