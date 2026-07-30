@@ -56,6 +56,28 @@ impl TestSetup {
         );
         cmd
     }
+
+    #[cfg(unix)]
+    fn cmd_with_supported_tmux(&self) -> Command {
+        use std::os::unix::fs::PermissionsExt;
+
+        let bin = self.work_dir.path().join("bin");
+        std::fs::create_dir_all(&bin).unwrap();
+        let tmux = bin.join("tmux");
+        std::fs::write(
+            &tmux,
+            "#!/bin/sh\nif [ \"${1:-}\" = \"-V\" ]; then\n  printf 'tmux 3.4\\n'\nfi\n",
+        )
+        .unwrap();
+        std::fs::set_permissions(&tmux, std::fs::Permissions::from_mode(0o700)).unwrap();
+
+        let mut cmd = self.cmd();
+        cmd.env(
+            "PATH",
+            format!("{}:{}", bin.display(), std::env::var("PATH").unwrap()),
+        );
+        cmd
+    }
 }
 
 const VALID_PROJECT: &str = "name: valid\nattach: false\nwindows:\n  - editor: vim\n";
@@ -246,12 +268,13 @@ windows:
 }
 
 #[test]
+#[cfg(unix)]
 fn project_name_shorthand_routes_to_start() {
     let setup = TestSetup::new();
     setup.write_project("broken", "name: broken\nwindows: []\n");
 
     setup
-        .cmd()
+        .cmd_with_supported_tmux()
         .arg("broken")
         .assert()
         .code(1)
@@ -259,6 +282,7 @@ fn project_name_shorthand_routes_to_start() {
 }
 
 #[test]
+#[cfg(unix)]
 fn bare_invocation_uses_local_project_file() {
     let setup = TestSetup::new();
     std::fs::write(
@@ -268,32 +292,33 @@ fn bare_invocation_uses_local_project_file() {
     .unwrap();
 
     setup
-        .cmd()
+        .cmd_with_supported_tmux()
         .assert()
         .code(1)
         .stdout("Your project file should include some windows.\n");
 }
 
 #[test]
+#[cfg(unix)]
 fn missing_projects_report_ruby_compatible_errors() {
     let setup = TestSetup::new();
 
     setup
-        .cmd()
+        .cmd_with_supported_tmux()
         .args(["start", "nosuch"])
         .assert()
         .code(1)
         .stdout("Project nosuch doesn't exist.\n");
 
     setup
-        .cmd()
+        .cmd_with_supported_tmux()
         .args(["stop"])
         .assert()
         .code(1)
         .stdout("Project file at ./.tmuxinator.yml doesn't exist.\n");
 
     setup
-        .cmd()
+        .cmd_with_supported_tmux()
         .args(["debug", "-p", "missing.yml"])
         .assert()
         .code(1)
