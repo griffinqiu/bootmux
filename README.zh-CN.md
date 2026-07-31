@@ -55,7 +55,7 @@ bootmux version
 
 ```sh
 mise use -g rust
-mise use -g cargo:bootmux@0.1.1
+mise use -g cargo:bootmux@0.1.2
 bootmux version
 ```
 

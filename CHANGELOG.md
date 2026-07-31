@@ -4,6 +4,8 @@ All notable changes to bootmux are documented here.
 
 ## [Unreleased]
 
+## [0.1.2] - 2026-07-31
+
 - Add a native zellij backend requiring zellij 0.44 or newer. A project becomes
   a zellij session built from a single generated KDL layout, windows become
   tabs, and pane commands are typed into each pane's shell so the shell survives
