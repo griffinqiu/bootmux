@@ -9,6 +9,14 @@ use crate::util::exit_with_message;
 
 // Command names and aliases must take precedence over project shorthand.
 // Keep this in sync with Clap's top-level subcommands.
+/// Accepted `--backend` spellings, kept in sync with [`Backend::ALL`] by
+/// `backend_values_cover_every_backend`.
+const BACKEND_VALUES: [&str; Backend::ALL.len()] = [
+    Backend::Tmux.as_str(),
+    Backend::Herdr.as_str(),
+    Backend::Zellij.as_str(),
+];
+
 const RESERVED_COMMANDS: &[&str] = &[
     "bindings",
     "commands",
@@ -53,13 +61,13 @@ const RESERVED_COMMANDS: &[&str] = &[
 #[command(
     name = "bootmux",
     version,
-    about = "Manage tmux sessions and Herdr workspaces from tmuxinator-compatible YAML",
+    about = "Run tmuxinator-style YAML projects in tmux, Herdr, or zellij",
     override_usage = "bootmux [OPTIONS] [COMMAND]"
 )]
 pub struct Cli {
     /// Select a backend explicitly. Otherwise bootmux uses the active
     /// multiplexer, then the configured global default.
-    #[arg(long, global = true, value_parser = ["tmux", "herdr"])]
+    #[arg(long, global = true, value_parser = BACKEND_VALUES)]
     pub backend: Option<String>,
     #[command(subcommand)]
     pub command: Command,
@@ -201,9 +209,9 @@ pub enum Command {
     Doctor,
     /// Select a project interactively with fzf
     Picker,
-    /// Print a tmux or Herdr picker binding snippet
+    /// Print a tmux, Herdr, or zellij picker binding snippet
     Bindings {
-        #[arg(id = "bindings_backend", value_parser = ["tmux", "herdr"])]
+        #[arg(id = "bindings_backend", value_parser = BACKEND_VALUES)]
         backend: String,
         /// Override the default key
         #[arg(long)]
@@ -231,7 +239,7 @@ pub enum ConfigAction {
     Set {
         #[arg(value_parser = ["default-backend"])]
         key: String,
-        #[arg(value_parser = ["tmux", "herdr"])]
+        #[arg(value_parser = BACKEND_VALUES)]
         value: String,
     },
     /// Print the global settings file path
@@ -294,7 +302,16 @@ fn command_token_index(args: &[String]) -> Option<usize> {
 mod tests {
     use clap::CommandFactory;
 
-    use super::{command_token_index, Cli, RESERVED_COMMANDS};
+    use super::{command_token_index, Backend, Cli, BACKEND_VALUES, RESERVED_COMMANDS};
+
+    #[test]
+    fn backend_values_cover_every_backend() {
+        let accepted: Vec<&str> = Backend::ALL
+            .iter()
+            .map(|backend| backend.as_str())
+            .collect();
+        assert_eq!(BACKEND_VALUES.to_vec(), accepted);
+    }
 
     #[test]
     fn finds_command_after_global_backend() {

@@ -59,17 +59,30 @@ impl TestSetup {
 
     #[cfg(unix)]
     fn cmd_with_supported_tmux(&self) -> Command {
+        self.cmd_with_fake_multiplexer(
+            "tmux",
+            "#!/bin/sh\nif [ \"${1:-}\" = \"-V\" ]; then\n  printf 'tmux 3.4\\n'\nfi\n",
+        )
+    }
+
+    #[cfg(unix)]
+    fn cmd_with_supported_zellij(&self) -> Command {
+        self.cmd_with_fake_multiplexer(
+            "zellij",
+            "#!/bin/sh\nif [ \"${1:-}\" = \"--version\" ]; then\n  \
+             printf 'zellij 0.44.3\\n'\nfi\n",
+        )
+    }
+
+    #[cfg(unix)]
+    fn cmd_with_fake_multiplexer(&self, name: &str, script: &str) -> Command {
         use std::os::unix::fs::PermissionsExt;
 
         let bin = self.work_dir.path().join("bin");
         std::fs::create_dir_all(&bin).unwrap();
-        let tmux = bin.join("tmux");
-        std::fs::write(
-            &tmux,
-            "#!/bin/sh\nif [ \"${1:-}\" = \"-V\" ]; then\n  printf 'tmux 3.4\\n'\nfi\n",
-        )
-        .unwrap();
-        std::fs::set_permissions(&tmux, std::fs::Permissions::from_mode(0o700)).unwrap();
+        let binary = bin.join(name);
+        std::fs::write(&binary, script).unwrap();
+        std::fs::set_permissions(&binary, std::fs::Permissions::from_mode(0o700)).unwrap();
 
         let mut cmd = self.cmd();
         cmd.env(
@@ -616,6 +629,92 @@ fn config_and_binding_commands_are_stable() {
         .stdout(predicate::str::contains("[[keys.command]]"))
         .stdout(predicate::str::contains("key = \"prefix+shift+f\""))
         .stdout(predicate::str::contains("width = \"80%\""));
+    setup
+        .cmd()
+        .args(["bindings", "zellij"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("keybinds {"))
+        .stdout(predicate::str::contains("shared_except \"locked\""))
+        .stdout(predicate::str::contains("bind \"Ctrl y\""))
+        .stdout(predicate::str::contains("Run \"bootmux\" \"picker\""));
+}
+
+#[test]
+fn zellij_backend_is_selectable_explicitly_by_environment_and_by_default() {
+    let setup = TestSetup::new();
+    setup.write_project(
+        "demo",
+        "name: demo\nattach: false\nwindows:\n  - app: echo hi\n",
+    );
+
+    setup
+        .cmd()
+        .args(["--backend", "zellij", "debug", "demo"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("backend: zellij"))
+        .stdout(predicate::str::contains("session: demo"))
+        .stdout(predicate::str::contains("tab name=\"app\""));
+
+    // zellij sets ZELLIJ to the literal "0" inside a session.
+    setup
+        .cmd()
+        .env("ZELLIJ", "0")
+        .args(["debug", "demo"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("backend: zellij"));
+
+    setup
+        .cmd()
+        .args(["config", "set", "default-backend", "zellij"])
+        .assert()
+        .success()
+        .stdout("default_backend = \"zellij\"\n");
+    setup
+        .cmd()
+        .args(["debug", "demo"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("backend: zellij"));
+}
+
+#[test]
+fn nested_multiplexer_environments_name_every_candidate() {
+    let setup = TestSetup::new();
+    setup.write_project(
+        "demo",
+        "name: demo\nattach: false\nwindows:\n  - app: echo hi\n",
+    );
+
+    setup
+        .cmd()
+        .env("TMUX", "/tmp/tmux,1,1")
+        .env("ZELLIJ", "0")
+        .args(["debug", "demo"])
+        .assert()
+        .failure()
+        .stdout(predicate::str::contains("ambiguous"))
+        .stdout(predicate::str::contains("tmux"))
+        .stdout(predicate::str::contains("zellij"))
+        .stdout(predicate::str::contains("--backend"));
+}
+
+#[cfg(unix)]
+#[test]
+fn zellij_doctor_checks_for_a_supported_version() {
+    let setup = TestSetup::new();
+    let assert = setup
+        .cmd_with_supported_zellij()
+        .args(["--backend", "zellij", "doctor"])
+        .assert()
+        .success();
+    let output = String::from_utf8(assert.get_output().stdout.clone()).unwrap();
+    assert!(
+        output.contains("Checking if zellij >= 0.44.0 is installed ==> Yes"),
+        "{output}"
+    );
 }
 
 #[cfg(unix)]

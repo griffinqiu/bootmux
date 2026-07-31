@@ -4,6 +4,21 @@ All notable changes to bootmux are documented here.
 
 ## [Unreleased]
 
+- Add a native zellij backend requiring zellij 0.44 or newer. A project becomes
+  a zellij session built from a single generated KDL layout, windows become
+  tabs, and pane commands are typed into each pane's shell so the shell survives
+  them, matching tmux `send-keys` semantics.
+- Support `--backend zellij` across `start`, `stop`, `stop-all`, `local`,
+  `debug`, `list --active`, `doctor`, `picker`, `bindings`, `--append`, and
+  `config set default-backend`.
+- Detect an active zellij environment from `ZELLIJ`, `ZELLIJ_SESSION_NAME`, or
+  `ZELLIJ_PANE_ID`. When several multiplexers are nested and the foreground one
+  cannot be identified, the error now names every candidate it saw.
+- `bootmux --backend zellij debug` prints the exact KDL layout, offline.
+- Warn and ignore `socket_name` and `socket_path` on zellij, which derives its
+  socket from the session name; reject a session name zellij cannot hold rather
+  than mangling it.
+
 ## [0.1.1] - 2026-07-30
 
 - Document mise's 24-hour minimum release age and use an immediately

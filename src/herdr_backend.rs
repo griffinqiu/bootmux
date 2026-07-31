@@ -1,7 +1,6 @@
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
-use std::str::FromStr;
 
 use anyhow::{anyhow, bail, Context, Result};
 
@@ -13,16 +12,16 @@ use crate::herdr::{
     SessionSnapshot, SplitDirection as HerdrSplitDirection, StateIndex, StateStore, TabCreate,
     WorkspaceCreate,
 };
-use crate::layout::{Layout, LayoutPreset, PaneChainBuilder, SplitDirection};
+use crate::layout::{Layout, SplitDirection};
 use crate::project::{parse_settings, LoadOptions, HOOK_ON_PROJECT_STOP};
 use crate::settings::Backend;
-use crate::spec::{HerdrProjectSpec, SplitDirection as SpecSplitDirection, WindowSpec};
+use crate::spec::{ProjectSpec, WindowSpec};
 use crate::template;
 use crate::util::{ask_yes, expand_path, say_colored, Color};
 use crate::yaml_ext::{get, join_or_string, parse};
 
 struct LoadedSpec {
-    spec: HerdrProjectSpec,
+    spec: ProjectSpec,
 }
 
 #[derive(Debug)]
@@ -359,7 +358,7 @@ pub fn classify_foreground_backend(env: &Env) -> Result<Option<Backend>> {
     }))
 }
 
-fn start_loaded(env: &Env, spec: HerdrProjectSpec) -> Result<()> {
+fn start_loaded(env: &Env, spec: ProjectSpec) -> Result<()> {
     preflight_spec(&spec)?;
     warn_ignored(&spec);
     let command_endpoint = endpoint_for(&spec, env)?;
@@ -497,11 +496,7 @@ fn start_loaded(env: &Env, spec: HerdrProjectSpec) -> Result<()> {
     Ok(())
 }
 
-fn append_to_active(
-    env: &Env,
-    client: &Herdr<ProcessRunner>,
-    spec: &HerdrProjectSpec,
-) -> Result<()> {
+fn append_to_active(env: &Env, client: &Herdr<ProcessRunner>, spec: &ProjectSpec) -> Result<()> {
     let workspace_id = current_workspace_id(env).ok_or_else(|| {
         anyhow!("`--append` with Herdr requires running inside a Herdr workspace or popup.")
     })?;
@@ -523,7 +518,7 @@ fn append_to_active(
 
 fn build_new_workspace(
     client: &Herdr<ProcessRunner>,
-    spec: &HerdrProjectSpec,
+    spec: &ProjectSpec,
     workspace_id: String,
     first_tab_id: String,
     first_pane_id: String,
@@ -570,7 +565,7 @@ fn build_new_workspace(
 
 fn build_appended_tabs(
     client: &Herdr<ProcessRunner>,
-    spec: &HerdrProjectSpec,
+    spec: &ProjectSpec,
     workspace_id: &str,
 ) -> Result<Topology> {
     let mut topology = Topology {
@@ -621,7 +616,7 @@ fn build_appended_tabs(
 
 fn build_window(
     client: &Herdr<ProcessRunner>,
-    spec: &HerdrProjectSpec,
+    spec: &ProjectSpec,
     window_index: usize,
     tab_id: &str,
     root_pane_id: &str,
@@ -725,7 +720,7 @@ fn realize_layout(
 
 fn apply_selection(
     client: &Herdr<ProcessRunner>,
-    spec: &HerdrProjectSpec,
+    spec: &ProjectSpec,
     topology: &Topology,
     previous: &SessionSnapshot,
     keep_focus: bool,
@@ -767,65 +762,7 @@ fn apply_selection(
 }
 
 fn layout_for(window: &WindowSpec) -> Result<Layout> {
-    let pane_count = window.effective_panes().len();
-    if window.pane_chain {
-        let mut builder = PaneChainBuilder::new(0);
-        for (index, pane) in window.panes.iter().enumerate().skip(1) {
-            let split = pane.split.ok_or_else(|| {
-                anyhow!("pane chain entry {index} is missing its split definition")
-            })?;
-            builder = builder.split_pane(
-                index,
-                match split.direction {
-                    SpecSplitDirection::Right => SplitDirection::Right,
-                    SpecSplitDirection::Down => SplitDirection::Down,
-                },
-                split.ratio,
-            )?;
-        }
-        return Ok(builder.build());
-    }
-    match window.layout.as_deref() {
-        None | Some("") => Ok(Layout::default_tiled(pane_count)?),
-        Some(layout) => match LayoutPreset::from_str(layout) {
-            Ok(preset) => Ok(preset.build(pane_count)?),
-            Err(_) => {
-                let parsed = Layout::parse_tmux(layout).map_err(|error| {
-                    anyhow!("invalid tmux serialized layout `{layout}`: {error}")
-                })?;
-                if parsed.pane_count() != pane_count {
-                    bail!(
-                        "tmux serialized layout contains {} panes but {pane_count} panes are configured.",
-                        parsed.pane_count()
-                    );
-                }
-                let pane_indices = parsed
-                    .pane_indices()
-                    .into_iter()
-                    .enumerate()
-                    .map(|(configured_index, serialized_id)| (serialized_id, configured_index))
-                    .collect::<HashMap<_, _>>();
-                Ok(reindex_layout(&parsed, &pane_indices))
-            }
-        },
-    }
-}
-
-fn reindex_layout(layout: &Layout, pane_indices: &HashMap<usize, usize>) -> Layout {
-    match layout {
-        Layout::Pane(index) => Layout::Pane(pane_indices[index]),
-        Layout::Split {
-            direction,
-            ratio,
-            first,
-            second,
-        } => Layout::Split {
-            direction: *direction,
-            ratio: *ratio,
-            first: Box::new(reindex_layout(first, pane_indices)),
-            second: Box::new(reindex_layout(second, pane_indices)),
-        },
-    }
+    window.layout_tree()
 }
 
 fn validate_herdr_ratios(layout: &Layout) -> Result<()> {
@@ -848,7 +785,7 @@ fn validate_herdr_ratios(layout: &Layout) -> Result<()> {
     }
 }
 
-fn preflight_spec(spec: &HerdrProjectSpec) -> Result<()> {
+fn preflight_spec(spec: &ProjectSpec) -> Result<()> {
     for window in &spec.windows {
         let pane_count = window.effective_panes().len();
         let layout = layout_for(window)?;
@@ -869,7 +806,7 @@ fn find_or_adopt(
     client: &Herdr<ProcessRunner>,
     state: &StateStore,
     endpoint: &Endpoint,
-    spec: &HerdrProjectSpec,
+    spec: &ProjectSpec,
     snapshot: &SessionSnapshot,
 ) -> Result<Option<ExistingWorkspace>> {
     let index = state.load()?;
@@ -938,7 +875,7 @@ fn find_or_adopt(
 fn managed_for_spec<'a>(
     index: &'a StateIndex,
     endpoint: &Endpoint,
-    spec: &HerdrProjectSpec,
+    spec: &ProjectSpec,
 ) -> Result<Option<&'a ManagedWorkspace>> {
     let by_config: Vec<_> = index
         .managed_workspaces
@@ -965,10 +902,7 @@ fn managed_for_spec<'a>(
     }
 }
 
-fn require_managed_project_identity(
-    managed: &ManagedWorkspace,
-    spec: &HerdrProjectSpec,
-) -> Result<()> {
+fn require_managed_project_identity(managed: &ManagedWorkspace, spec: &ProjectSpec) -> Result<()> {
     if managed.project_name != spec.name
         || managed.label != spec.name
         || managed.root_cwd != Path::new(&spec.root)
@@ -990,7 +924,7 @@ fn require_managed_project_identity(
 fn require_no_managed_config_on_other_endpoint(
     index: &StateIndex,
     endpoint: &Endpoint,
-    spec: &HerdrProjectSpec,
+    spec: &ProjectSpec,
 ) -> Result<()> {
     let mut other_endpoints = index
         .managed_workspaces
@@ -1013,7 +947,7 @@ fn require_no_managed_config_on_other_endpoint(
 
 fn require_managed_stop_hook_snapshot(
     managed: &ManagedWorkspace,
-    spec: &HerdrProjectSpec,
+    spec: &ProjectSpec,
 ) -> Result<()> {
     let Some(snapshot) = &managed.stop_hook else {
         return Ok(());
@@ -1028,7 +962,7 @@ fn require_managed_stop_hook_snapshot(
     Ok(())
 }
 
-fn remove_project_entries(index: &mut StateIndex, endpoint: &Endpoint, spec: &HerdrProjectSpec) {
+fn remove_project_entries(index: &mut StateIndex, endpoint: &Endpoint, spec: &ProjectSpec) {
     index.managed_workspaces.retain(|managed| {
         &managed.endpoint != endpoint
             || managed.config_path != spec.source_path
@@ -1058,7 +992,7 @@ fn root_pane_for(snapshot: &SessionSnapshot, workspace_id: &str, root: &str) -> 
         .min()
 }
 
-fn endpoint_for(spec: &HerdrProjectSpec, env: &Env) -> Result<Endpoint> {
+fn endpoint_for(spec: &ProjectSpec, env: &Env) -> Result<Endpoint> {
     if let Some(path) = &spec.socket_path {
         return Ok(Endpoint::SocketPath(PathBuf::from(expand_path(
             path,
@@ -1274,7 +1208,7 @@ fn load_spec(
     settings: &HashMap<String, String>,
     args: &[String],
     opts: LoadOptions,
-) -> Result<HerdrProjectSpec> {
+) -> Result<ProjectSpec> {
     let file = config::find_project_file(
         env,
         &ProjectFileQuery {
@@ -1283,7 +1217,7 @@ fn load_spec(
         },
     )?;
     let content = config::read_project_file(env, &file)?;
-    HerdrProjectSpec::load(&file, &content, settings, args, opts, env)
+    ProjectSpec::load(&file, &content, settings, args, opts, env, Backend::Herdr)
 }
 
 fn load_stop_hook(env: &Env, managed: &ManagedWorkspace) -> Option<Result<Option<String>>> {
@@ -1314,7 +1248,7 @@ fn stop_all_hook(env: &Env, managed: &ManagedWorkspace) -> Result<Option<String>
 /// `None` is reserved for state written before stop hooks were snapshotted.
 /// New state records an empty string when no hook exists, preventing stop-all
 /// from executing a hook added to the config after the workspace was started.
-fn stop_hook_snapshot(spec: &HerdrProjectSpec) -> Option<String> {
+fn stop_hook_snapshot(spec: &ProjectSpec) -> Option<String> {
     Some(spec.hooks.stop.clone().unwrap_or_default())
 }
 
@@ -1346,7 +1280,7 @@ fn run_hook(command: Option<&str>, root: &str, env: &Env) -> Result<()> {
     Ok(())
 }
 
-fn warn_ignored(spec: &HerdrProjectSpec) {
+fn warn_ignored(spec: &ProjectSpec) {
     for warning in &spec.warnings {
         eprintln!("warning: {warning}");
     }
@@ -1411,7 +1345,7 @@ mod tests {
 
     #[test]
     fn endpoint_precedence_is_socket_then_name_then_ambient() {
-        let mut spec = HerdrProjectSpec {
+        let mut spec = ProjectSpec {
             source_path: "/tmp/a.yml".into(),
             name: "a".into(),
             root: "/tmp".into(),
@@ -1526,7 +1460,7 @@ mod tests {
             root_pane_id: None,
             stop_hook: None,
         };
-        let mut spec = HerdrProjectSpec {
+        let mut spec = ProjectSpec {
             source_path: "/tmp/work.yml".into(),
             name: "correct".into(),
             root: "/tmp/correct".into(),
@@ -1580,7 +1514,7 @@ mod tests {
 
     #[test]
     fn an_absent_stop_hook_is_still_a_persisted_snapshot() {
-        let spec = HerdrProjectSpec {
+        let spec = ProjectSpec {
             source_path: "/tmp/work.yml".into(),
             name: "work".into(),
             root: "/tmp/work".into(),
@@ -1651,7 +1585,7 @@ mod tests {
             "{:04x},{payload}",
             crate::layout::tmux_layout_checksum(payload)
         );
-        let spec = HerdrProjectSpec {
+        let spec = ProjectSpec {
             source_path: "/tmp/a.yml".into(),
             name: "a".into(),
             root: "/tmp".into(),
@@ -1671,30 +1605,5 @@ mod tests {
             .unwrap_err()
             .to_string()
             .contains("cannot be represented"));
-    }
-
-    #[test]
-    fn serialized_pane_ids_map_to_configured_visual_order() {
-        let serialized = Layout::Split {
-            direction: SplitDirection::Right,
-            ratio: 0.5,
-            first: Box::new(Layout::Pane(8)),
-            second: Box::new(Layout::Pane(4)),
-        };
-        let mapping = serialized
-            .pane_indices()
-            .into_iter()
-            .enumerate()
-            .map(|(configured_index, serialized_id)| (serialized_id, configured_index))
-            .collect();
-        assert_eq!(
-            reindex_layout(&serialized, &mapping),
-            Layout::Split {
-                direction: SplitDirection::Right,
-                ratio: 0.5,
-                first: Box::new(Layout::Pane(0)),
-                second: Box::new(Layout::Pane(1)),
-            }
-        );
     }
 }

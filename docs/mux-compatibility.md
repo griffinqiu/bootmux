@@ -3,8 +3,8 @@
 bootmux is designed for tmuxinator-style projects and uses
 [willfish/mux](https://github.com/willfish/mux) as an additional compatibility
 reference. Compatibility means the supported project is parsed and translated
-with documented backend semantics; it does not mean tmux and Herdr produce
-identical runtime behavior.
+with documented backend semantics; it does not mean tmux, Herdr, and zellij
+produce identical runtime behavior.
 
 ## Reference revision
 
@@ -43,32 +43,33 @@ type-valid value wins. Obsolete no-op keys such as top-level `rbenv`, `rvm`,
 The matrix is a debug/render/preflight test. “Accept” does not mean the fixture
 was executed end-to-end against a real multiplexer.
 
-| Fixture | tmux debug/render | Herdr preflight | Note |
-|---|---|---|---|
-| `detach.yml` | Accept | Accept | `attach: false` |
-| `focused_pane.yml` | Accept | Accept | Pane focus |
-| `hooks.yml` | Accept | Accept | Lifecycle hooks |
-| `nameless_window.yml` | Accept | Accept | Nameless entry |
-| `noroot.yml` | Accept | Accept | Current-directory root |
-| `nowindows.yml` | Expected reject | Expected reject | Projects require windows |
-| `pane_titles.yml` | Accept | Accept | Border settings ignored by Herdr; pane labels remain |
-| `sample.yml` | Accept | Accept | Broad project shape |
-| `sample_deprecations.yml` | Accept | Accept | Legacy aliases/no-op fields |
-| `sample_emoji_as_name.yml` | Accept | Accept | Scalar name |
-| `sample_literals_as_window_name.yml` | Accept | Accept | YAML literal names |
-| `sample_number_as_name.yml` | Accept | Accept | Numeric project name |
-| `sample_wemux.yml` | Accept | Accept | `wemux` used only by tmux |
-| `socket.yml` | Accept | Accept | Named socket/session |
-| `startup.yml` | Accept | Accept | Startup window/pane |
-| `synchronize.yml` | Accept | Expected reject | Herdr has no synchronized input |
-| `template.yml` | Accept | Accept | Restricted settings placeholder |
-| `window_root.yml` | Accept | Accept | Per-window root |
-| `demo.yml` | Accept | Accept | Upstream demo |
+| Fixture | tmux debug/render | Herdr preflight | zellij preflight | Note |
+|---|---|---|---|---|
+| `detach.yml` | Accept | Accept | Accept | `attach: false` |
+| `focused_pane.yml` | Accept | Accept | Accept | Pane focus |
+| `hooks.yml` | Accept | Accept | Accept | Lifecycle hooks |
+| `nameless_window.yml` | Accept | Accept | Accept | Nameless entry |
+| `noroot.yml` | Accept | Accept | Accept | Current-directory root |
+| `nowindows.yml` | Expected reject | Expected reject | Expected reject | Projects require windows |
+| `pane_titles.yml` | Accept | Accept | Accept | Border settings ignored by Herdr and zellij; pane labels remain |
+| `sample.yml` | Accept | Accept | Accept | Broad project shape |
+| `sample_deprecations.yml` | Accept | Accept | Accept | Legacy aliases/no-op fields |
+| `sample_emoji_as_name.yml` | Accept | Accept | Accept | Scalar name |
+| `sample_literals_as_window_name.yml` | Accept | Accept | Accept | YAML literal names |
+| `sample_number_as_name.yml` | Accept | Accept | Accept | Numeric project name |
+| `sample_wemux.yml` | Accept | Accept | Accept | `wemux` used only by tmux |
+| `socket.yml` | Accept | Accept | Accept | Named socket/session; ignored by zellij |
+| `startup.yml` | Accept | Accept | Accept | Startup window/pane |
+| `synchronize.yml` | Accept | Expected reject | Accept | Herdr has no synchronized input; zellij ignores it |
+| `template.yml` | Accept | Accept | Accept | Restricted settings placeholder |
+| `window_root.yml` | Accept | Accept | Accept | Per-window root |
+| `demo.yml` | Accept | Accept | Accept | Upstream demo |
 
 Totals:
 
 - tmux: 18 accepted, 1 expected rejection
 - Herdr: 17 accepted, 2 expected rejections
+- zellij: 18 accepted, 1 expected rejection
 
 The 18 accepted tmux renderings also receive `/bin/sh -n` syntax checks. A
 smaller set of assertions verifies important alias, template, focus, and
@@ -107,23 +108,25 @@ Unsupported `<% ... %>` receives a migration hint rather than executing Ruby.
 - exact native tmux layout geometry
 
 Herdr warns and ignores the first three categories and rejects enabled
-`synchronize`.
+`synchronize`. zellij warns and ignores all of them, plus `socket_name` and
+`socket_path`.
 
 ### Names and indices
 
-tmux replaces `.` and `:` in project names with `_`; Herdr retains the original
-workspace label.
+tmux replaces `.` and `:` in project names with `_`; Herdr and zellij retain the
+original name as the workspace label or session name. zellij additionally caps
+the name at 36 characters and rejects `/`.
 
 For cross-backend projects, prefer a window name in `startup_window`. A number
-is a zero-based logical index for Herdr, while tmux interprets it as a tmux
-window target affected by `base-index`.
+is a zero-based logical index for Herdr and zellij, while tmux interprets it as
+a tmux window target affected by `base-index`.
 
 Pane numbers are written as zero-based logical indices. tmux adjusts them for
 `pane-base-index`.
 
 An invalid `focused_pane` falls back to the first pane under tmuxinator/tmux
-semantics. Herdr rejects an invalid title or out-of-range index during
-preflight.
+semantics. Herdr and zellij reject an invalid title or out-of-range index while
+parsing the project.
 
 ### Attachment
 
@@ -137,14 +140,14 @@ attach: false
 
 ### Repeated start
 
-Neither backend reruns pane commands when reusing an existing project.
+No backend reruns pane commands when reusing an existing project.
 `on_project_restart` is the place for recovery logic.
 
 ### Append
 
 tmux appends windows to the current session. Herdr appends tabs to the active
-workspace on the same endpoint. Herdr append does not create an independent
-ownership record that can later be stopped by the appended project's config.
+workspace on the same endpoint, and zellij appends tabs to the active session.
+Neither Herdr nor zellij append creates an independently stoppable project.
 
 ### Project discovery
 
@@ -169,7 +172,7 @@ The compatibility suite proves:
 - accepted tmux scripts are syntactically valid `/bin/sh`;
 - selected key semantics match the reference behavior.
 
-It does not execute all 19 fixtures against real tmux and Herdr.
+It does not execute all 19 fixtures against real tmux, Herdr, or zellij.
 
 Separate ignored smoke tests exercise representative real lifecycles:
 
@@ -178,7 +181,10 @@ Separate ignored smoke tests exercise representative real lifecycles:
   missing root;
 - Herdr: concurrent/repeated start reuse, two tabs/four panes with real command
   output, append, wrong-endpoint and wrong-identity stop rejection, a rendered
-  stop hook, and config-independent `stop-all` for newly written state.
+  stop hook, and config-independent `stop-all` for newly written state;
+- zellij: start/reuse, two tabs/three panes with real command output and
+  ordering, `list --active`, a rendered stop hook, and a rejected project
+  leaving no session behind.
 
 These smoke tests do not claim end-to-end coverage of every fixture, custom
 layout, every socket selector mode or named Herdr sessions, attach paths, hook
@@ -189,8 +195,9 @@ failures, or rollback branches. See
 
 1. Keep the existing config in its tmuxinator directory.
 2. Run `bootmux --backend tmux debug PROJECT`.
-3. Run `bootmux --backend herdr debug PROJECT`.
-4. Resolve Herdr warnings or explicit rejections.
+3. Run `bootmux --backend herdr debug PROJECT` and
+   `bootmux --backend zellij debug PROJECT`.
+4. Resolve backend warnings or explicit rejections.
 5. Start detached first with `--no-attach`.
 6. Inspect topology and commands on each backend.
 7. Test stop with the same template inputs used at start.

@@ -3,12 +3,12 @@ name = "bootmux"
 version = "0.1.1"
 edition = "2021"
 rust-version = "1.89"
-description = "Manage tmux sessions and Herdr workspaces from tmuxinator-compatible YAML"
+description = "Run tmuxinator-style YAML projects in tmux, Herdr, or zellij"
 license = "MIT"
 readme = "README.md"
 homepage = "https://github.com/griffinqiu/bootmux"
 repository = "https://github.com/griffinqiu/bootmux"
-keywords = ["tmux", "herdr", "tmuxinator", "terminal", "workspace"]
+keywords = ["tmux", "herdr", "zellij", "tmuxinator", "terminal"]
 categories = ["command-line-utilities", "development-tools"]
 publish = ["crates-io"]
 

@@ -1,0 +1,5 @@
+layout {
+    tab name="main" cwd="/workdir" focus=true {
+        pane focus=true
+    }
+}

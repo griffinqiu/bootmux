@@ -8,7 +8,7 @@ _bootmux() {
 
   if [[ $words[2] == --backend ]]; then
     if (( CURRENT == 3 )); then
-      _values 'backend' tmux herdr
+      _values 'backend' tmux herdr zellij
       return
     fi
     command_index=4
@@ -23,7 +23,7 @@ _bootmux() {
   elif (( CURRENT == command_index + 1 )); then
     case $words[command_index] in
       bindings)
-        _values 'backend' tmux herdr
+        _values 'backend' tmux herdr zellij
       ;;
       copy|cp|c|debug|delete|rm|open|o|start|s|stop|edit|e)
         _arguments '*:projects:($projects)'

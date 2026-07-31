@@ -123,8 +123,10 @@ pub fn start_with_backend(
     suppress_version_warning: bool,
 ) -> Result<()> {
     let params = params.normalized();
-    if backend == Backend::Herdr {
-        return crate::herdr_backend::start(env, &params);
+    match backend {
+        Backend::Herdr => return crate::herdr_backend::start(env, &params),
+        Backend::Zellij => return crate::zellij_backend::start(env, &params),
+        Backend::Tmux => {}
     }
     warn_unsupported_version(ctx, suppress_version_warning);
     let project = create_from_params(env, ctx, &params)?;
@@ -142,8 +144,10 @@ pub fn debug_with_backend(
     params: StartParams,
 ) -> Result<()> {
     let params = params.normalized();
-    if backend == Backend::Herdr {
-        return crate::herdr_backend::debug(env, &params);
+    match backend {
+        Backend::Herdr => return crate::herdr_backend::debug(env, &params),
+        Backend::Zellij => return crate::zellij_backend::debug(env, &params),
+        Backend::Tmux => {}
     }
     let project = create_from_params(env, ctx, &params)?;
     print!("{}", script::render_start(&project));
@@ -185,8 +189,14 @@ pub fn stop_with_backend(
         }
     }
     let (settings, args) = parse_settings(args);
-    if backend == Backend::Herdr {
-        return crate::herdr_backend::stop(env, project, project_config, &settings, &args);
+    match backend {
+        Backend::Herdr => {
+            return crate::herdr_backend::stop(env, project, project_config, &settings, &args)
+        }
+        Backend::Zellij => {
+            return crate::zellij_backend::stop(env, project, project_config, &settings, &args)
+        }
+        Backend::Tmux => {}
     }
     warn_unsupported_version(ctx, suppress_version_warning);
     let project = create_project(
@@ -211,19 +221,19 @@ pub fn local_with_backend(
     backend: Backend,
     suppress_version_warning: bool,
 ) -> Result<()> {
-    if backend == Backend::Herdr {
-        return crate::herdr_backend::start(
-            env,
-            &StartParams {
-                project: None,
-                args: Vec::new(),
-                attach: None,
-                custom_name: None,
-                project_config: None,
-                append: false,
-                no_pre_window: false,
-            },
-        );
+    let local_params = || StartParams {
+        project: None,
+        args: Vec::new(),
+        attach: None,
+        custom_name: None,
+        project_config: None,
+        append: false,
+        no_pre_window: false,
+    };
+    match backend {
+        Backend::Herdr => return crate::herdr_backend::start(env, &local_params()),
+        Backend::Zellij => return crate::zellij_backend::start(env, &local_params()),
+        Backend::Tmux => {}
     }
     warn_unsupported_version(ctx, suppress_version_warning);
     let project = create_project(
@@ -248,8 +258,10 @@ pub fn stop_all_with_backend(
     backend: Backend,
     noconfirm: bool,
 ) -> Result<()> {
-    if backend == Backend::Herdr {
-        return crate::herdr_backend::stop_all(env, noconfirm);
+    match backend {
+        Backend::Herdr => return crate::herdr_backend::stop_all(env, noconfirm),
+        Backend::Zellij => return crate::zellij_backend::stop_all(env, noconfirm),
+        Backend::Tmux => {}
     }
     let sessions = ctx.active_sessions();
     let active_configs = config::configs(env, Some((true, &sessions)));

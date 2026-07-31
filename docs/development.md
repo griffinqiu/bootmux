@@ -13,9 +13,13 @@ test layer actually proves.
 | Templates/YAML | `src/template.rs`, `src/yaml_ext.rs` | MiniJinja, restricted mux ERB, alias/scalar behavior |
 | tmux model | `src/project.rs`, `src/window.rs`, `src/pane.rs` | tmuxinator-compatible parsed behavior |
 | tmux renderer | `src/script.rs`, `src/tmux.rs` | generated shell and tmux introspection |
-| Neutral Herdr spec | `src/spec.rs`, `src/layout.rs` | portable project model and BSP preflight |
+| Backend-neutral spec | `src/spec.rs`, `src/layout.rs` | portable project model and BSP preflight |
+| Child-process boundary | `src/process.rs` | injectable `CommandRunner` shared by the structured backends |
 | Herdr transport/state | `src/herdr.rs` | typed JSON CLI, protocol focus, ownership persistence |
 | Herdr lifecycle | `src/herdr_backend.rs` | start/reuse/append/stop/rollback |
+| zellij transport | `src/zellij.rs` | typed CLI, session listing, pane-targeted input |
+| zellij renderer | `src/zellij_layout.rs` | BSP tree to KDL layout documents |
+| zellij lifecycle | `src/zellij_backend.rs` | start/reuse/append/stop, geometric pane mapping |
 | Picker integration | `src/picker.rs`, `src/bindings.rs` | `fzf` selection and safe config snippets |
 
 ## Fast local checks
@@ -61,6 +65,10 @@ Three representative renderings (`basic`, `pane_titles`, and `session_name`)
 are compared byte-for-byte with tmuxinator-derived tmux 2.6 snapshots in
 `tests/snapshots/2.6/`.
 
+The same three projects also pin their zellij KDL layouts in
+`tests/snapshots/zellij/`. The KDL document is the artifact bootmux hands to
+zellij, so it is the zellij equivalent of the generated tmux script.
+
 This is an exact renderer contract for those cases, not a claim that every YAML
 project is byte-identical to tmuxinator.
 
@@ -75,6 +83,7 @@ The suite covers all 19 YAML files vendored from willfish/mux commit
 
 - tmux: 18 accepted, `nowindows.yml` rejected as expected
 - Herdr: 17 accepted, `nowindows.yml` and `synchronize.yml` rejected as expected
+- zellij: 18 accepted, `nowindows.yml` rejected as expected
 - accepted tmux scripts receive `/bin/sh -n`
 - selected field semantics receive explicit assertions
 
@@ -131,13 +140,42 @@ ran; confirm `herdr --version` and inspect the test output.
 The smoke does not cover client attachment, detached focus restoration, named
 sessions, stale-ID adoption, custom serialized layouts, or rollback failures.
 
+## Real zellij smoke test
+
+```sh
+zellij --version
+cargo test --test zellij_smoke -- --ignored
+```
+
+Set `ZELLIJ_BIN=/absolute/path/to/zellij` to choose another zellij binary.
+
+The test uses a temporary HOME, `ZELLIJ_CONFIG_DIR`, XDG directories, and
+project directory, and clears the inherited `ZELLIJ*` variables so it cannot be
+mistaken for running inside a session. It creates and kills its own uniquely
+named background session and verifies:
+
+- a two-tab, three-pane topology is built from the rendered layout;
+- `pre_window` runs in every pane and a pane's own commands run in order;
+- a repeated start reuses the session without rerunning pane commands or
+  adding panes;
+- `list --active` reports the project;
+- `stop` runs the stop hook and closes the session;
+- a project whose layout cannot hold its panes fails without leaving a session.
+
+If zellij is not installed, this test prints a skip message and returns success.
+A green test result alone is therefore not evidence that the real zellij path
+ran; confirm `zellij --version` and inspect the test output.
+
+The smoke does not cover client attachment, `switch-session`, `--append`,
+`stop-all`, or rollback failures.
+
 ## Documentation checks
 
 After changing Markdown:
 
 1. verify every relative link resolves;
 2. compare CLI examples with `cargo run -- COMMAND --help`;
-3. keep config tables aligned with both `Project` and `HerdrProjectSpec`;
+3. keep config tables aligned with both `Project` and `ProjectSpec`;
 4. distinguish static debug/preflight coverage from real lifecycle coverage;
 5. do not turn expected Herdr safety rejections into generic incompatibility
    claims.

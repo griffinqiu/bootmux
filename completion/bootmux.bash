@@ -9,14 +9,14 @@ _bootmux() {
     esac
 
     if [ "$COMP_CWORD" -gt 0 ] && [ "${COMP_WORDS[COMP_CWORD-1]}" = "--backend" ]; then
-        COMPREPLY=( $(compgen -W "tmux herdr" -- "$word") )
+        COMPREPLY=( $(compgen -W "tmux herdr zellij" -- "$word") )
     elif [ "$COMP_CWORD" -eq "$command_index" ]; then
         local commands="$(compgen -W "$(bootmux commands)" -- "$word")"
         local projects="$(compgen -W "$(bootmux completions start)" -- "$word")"
 
         COMPREPLY=( $commands $projects )
     elif [ "$COMP_CWORD" -eq $((command_index + 1)) ] && [ "${COMP_WORDS[command_index]}" = "bindings" ]; then
-        COMPREPLY=( $(compgen -W "tmux herdr" -- "$word") )
+        COMPREPLY=( $(compgen -W "tmux herdr zellij" -- "$word") )
     elif [ "$COMP_CWORD" -eq $((command_index + 1)) ]; then
         local completions
         completions=$(bootmux completions "${COMP_WORDS[command_index]}")

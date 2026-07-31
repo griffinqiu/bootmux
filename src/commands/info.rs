@@ -91,6 +91,7 @@ pub fn list_with_backend(
         match backend.unwrap_or(Backend::Tmux) {
             Backend::Tmux => ctx.active_sessions(),
             Backend::Herdr => crate::herdr_backend::active_project_names(env)?,
+            Backend::Zellij => crate::zellij_backend::active_project_names(env)?,
         }
     } else {
         Vec::new()
@@ -148,6 +149,13 @@ pub fn doctor_with_backend(env: &Env, backend: Backend) -> Result<()> {
         Backend::Herdr => {
             print!("Checking if Herdr >= 0.7.5 (protocol 17) is installed ==> ");
             yes_no(crate::herdr_backend::doctor_compatible(env));
+        }
+        Backend::Zellij => {
+            print!(
+                "Checking if zellij >= {} is installed ==> ",
+                crate::zellij::MINIMUM_VERSION
+            );
+            yes_no(crate::zellij_backend::doctor_compatible(env));
         }
     }
 

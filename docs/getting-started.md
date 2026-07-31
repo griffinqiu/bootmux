@@ -12,6 +12,7 @@ bootmux needs at least one supported multiplexer:
 - a Unix-like operating system
 - tmux 2.6 or newer
 - Herdr 0.7.5 or newer, using socket protocol 17
+- zellij 0.44 or newer
 
 Installing bootmux requires Rust and Cargo 1.89 or newer. Install the latest
 release from crates.io:
@@ -57,6 +58,7 @@ Run the environment check for each backend you intend to use:
 ```sh
 bootmux --backend tmux doctor
 bootmux --backend herdr doctor
+bootmux --backend zellij doctor
 ```
 
 ## 2. Create a project
@@ -108,8 +110,10 @@ project topology.
   read tmux indices and session state.
 - Herdr debug prints the endpoint, ownership actions, tab/pane layout, command
   counts, and startup selection. It does not contact or start a Herdr server.
+- zellij debug prints the resolved session name, the complete KDL layout, and
+  command counts. It does not contact zellij.
 
-Warnings in a Herdr plan normally identify tmux-only fields that will be
+Warnings in a Herdr or zellij plan normally identify tmux-only fields that will be
 ignored. Errors such as `synchronize` or an unrepresentable layout must be
 resolved before start.
 
@@ -127,6 +131,14 @@ Or with Herdr:
 bootmux --backend herdr start myapp
 bootmux --backend herdr list --active
 bootmux --backend herdr stop myapp
+```
+
+Or with zellij:
+
+```sh
+bootmux --backend zellij start myapp
+bootmux --backend zellij list --active
+bootmux --backend zellij stop myapp
 ```
 
 Repeated `start` reuses the matching session/workspace and runs
@@ -157,11 +169,11 @@ bootmux config path
 Backend resolution order is:
 
 1. an explicit `--backend`
-2. the active tmux or Herdr environment
+2. the active tmux, Herdr, or zellij environment
 3. the global `default_backend`
 4. tmux
 
-An active Herdr popup wins over tmux variables inherited from a surrounding
+An active Herdr popup wins over variables inherited from a surrounding
 tmux session. A genuinely ambiguous nested environment fails with a request
 for `--backend`.
 
@@ -194,9 +206,11 @@ Install `fzf`, then inspect the generated binding for your multiplexer:
 ```sh
 bootmux bindings tmux
 bootmux bindings herdr
+bootmux bindings zellij
 ```
 
-Paste the printed snippet into `tmux.conf` or the Herdr TOML configuration.
+Paste the printed snippet into `tmux.conf`, the Herdr TOML configuration, or
+the zellij KDL configuration.
 Use `--key` to select another key:
 
 ```sh

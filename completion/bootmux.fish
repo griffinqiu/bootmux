@@ -23,7 +23,7 @@ function __fish_bootmux_using_command
 end
 
 complete --no-files --command bootmux --condition __fish_use_subcommand --exclusive --argument "(bootmux commands)"
-complete --no-files --command bootmux --long-option backend --require-parameter --arguments "tmux herdr"
+complete --no-files --command bootmux --long-option backend --require-parameter --arguments "tmux herdr zellij"
 complete --no-files --command bootmux --condition '__fish_bootmux_using_command start' --argument "(bootmux completions start)"
 complete --no-files --command bootmux --condition '__fish_bootmux_using_command open' --argument "(bootmux completions open)"
 complete --no-files --command bootmux --condition '__fish_bootmux_using_command stop' --argument "(bootmux completions stop)"
@@ -31,4 +31,4 @@ complete --no-files --command bootmux --condition '__fish_bootmux_using_command 
 complete --no-files --command bootmux --condition '__fish_bootmux_using_command copy' --argument "(bootmux completions copy)"
 complete --no-files --command bootmux --condition '__fish_bootmux_using_command delete' --argument "(bootmux completions delete)"
 complete --no-files --command bootmux --condition '__fish_bootmux_using_command debug' --argument "(bootmux completions start)"
-complete --no-files --command bootmux --condition '__fish_bootmux_using_command bindings' --argument "tmux herdr"
+complete --no-files --command bootmux --condition '__fish_bootmux_using_command bindings' --argument "tmux herdr zellij"

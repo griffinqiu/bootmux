@@ -1,7 +1,7 @@
 # CLI reference
 
 ```text
-bootmux [--backend tmux|herdr] [COMMAND]
+bootmux [--backend tmux|herdr|zellij] [COMMAND]
 ```
 
 `--backend` is global. Put it before the subcommand for one syntax that works
@@ -68,8 +68,9 @@ bootmux start -p ./project.yml production root=/work/myapp
 `-n/--name` is a start/debug override; `stop` has no matching name option. For
 repeatable alternate instances, template the YAML `name` and pass the same
 setting to both start and stop. A tmux session created only with `-n` may need
-direct tmux cleanup, while a Herdr workspace remains eligible for ownership-
-based `stop-all`.
+direct tmux cleanup, and a zellij session started only with `-n` is likewise
+invisible to name-based `stop-all`, while a Herdr workspace remains eligible for
+ownership-based `stop-all`.
 
 ### `debug`
 
@@ -78,11 +79,11 @@ bootmux debug [OPTIONS] [PROJECT] [ARGS]...
 ```
 
 `debug` accepts the start options except the tmux version-warning flag. It
-validates the config and prints the generated tmux script or Herdr operation
-plan without creating the project topology.
+validates the config and prints the generated tmux script, the Herdr operation
+plan, or the zellij KDL layout and plan, without creating the project topology.
 
-Herdr debug is offline. tmux debug may query/start a tmux server to determine
-indices and existing-session state.
+Herdr and zellij debug are offline. tmux debug may query/start a tmux server to
+determine indices and existing-session state.
 
 ### `stop`
 
@@ -125,8 +126,12 @@ and asks for confirmation.
   custom-socket cases.
 - Herdr stops only workspaces proven by bootmux's ownership state. It never
   stops the Herdr server.
+- zellij compares running session names with discoverable `.yml` project
+  basenames, the same heuristic as tmux and with the same blind spots. Sessions
+  zellij keeps listed for resurrection are ignored.
 
-See [Stop safety](backends.md#herdr-stop-safety).
+See [Stop safety](backends.md#herdr-stop-safety) and
+[zellij stop](backends.md#zellij-stop-and-stop-all-are-heuristic).
 
 ### `local`
 
@@ -216,6 +221,7 @@ source /path/to/bootmux/completion/bootmux.fish
 ```text
 bootmux bindings tmux [--key KEY]
 bootmux bindings herdr [--key KEY]
+bootmux bindings zellij [--key KEY]
 ```
 
 The default tmux key is `F` under the tmux prefix. The snippet uses
@@ -224,12 +230,17 @@ The default tmux key is `F` under the tmux prefix. The snippet uses
 The default Herdr key is `prefix+shift+f`. The generated TOML opens
 `bootmux picker` in an 80% by 80% popup.
 
+The default zellij key is `Ctrl y`, chosen to avoid zellij's own default
+bindings. The generated KDL binds it in every mode except `locked` and runs
+`bootmux picker` in a floating pane that closes on exit.
+
 ## Global settings
 
 ```sh
 bootmux config get default-backend
 bootmux config set default-backend tmux
 bootmux config set default-backend herdr
+bootmux config set default-backend zellij
 bootmux config path
 ```
 

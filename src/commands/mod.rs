@@ -123,7 +123,7 @@ pub fn dispatch_with_backend(
             session,
             local,
         } => {
-            if session.is_some() && selected_backend(explicit_backend, env)? == Backend::Herdr {
+            if session.is_some() && selected_backend(explicit_backend, env)? != Backend::Tmux {
                 anyhow::bail!(
                     "`bootmux new NAME SESSION` introspects tmux and is only available with `--backend tmux`."
                 );
@@ -180,6 +180,9 @@ pub fn dispatch_with_backend(
                     crate::bindings::DEFAULT_HERDR_POPUP_SIZE,
                     crate::bindings::DEFAULT_HERDR_POPUP_SIZE,
                 )?,
+                (Backend::Zellij, Some(key)) => {
+                    crate::bindings::zellij_snippet_with(key, crate::bindings::PICKER_COMMAND)?
+                }
                 (_, None) => crate::bindings::snippet(backend),
             };
             print!("{snippet}");

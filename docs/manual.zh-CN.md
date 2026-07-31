@@ -50,20 +50,20 @@
 
 bootmux 会把这些意图原生转换到对应后端：
 
-| 项目概念 | tmux | Herdr |
-|---|---|---|
-| 项目 | 会话 | 工作区 |
-| 窗口 | 窗口 | 标签页 |
-| 窗格 | 窗格 | PTY 窗格 |
-| 窗格命令 | `send-keys` | `pane run` |
-| 布局 | tmux 布局 | Herdr BSP 分割 |
+| 项目概念 | tmux | Herdr | zellij |
+|---|---|---|---|
+| 项目 | 会话 | 工作区 | 会话 |
+| 窗口 | 窗口 | 标签页 | 标签页 |
+| 窗格 | 窗格 | PTY 窗格 | 窗格 |
+| 窗格命令 | `send-keys` | `pane run` | `write-chars` + `send-keys Enter` |
+| 布局 | tmux 布局 | Herdr BSP 分割 | KDL 布局 |
 
 普通启动会创建或复用一个容器。`--append` 是例外：它把窗口/标签页添加到
 当前容器中，而不是创建一个独立项目。
 
 YAML 可移植并不代表多路复用器的行为完全相同。tmux 专用选项仍然只适用于
-tmux，Herdr 的所有权检查更严格，而布局转换可以保留拓扑，却不一定能保留
-精确的单元格几何尺寸。
+tmux，Herdr 的所有权检查更严格，zellij 仅凭会话名称识别项目，而布局转换
+可以保留拓扑，却不一定能保留精确的单元格几何尺寸。
 
 ## 2. 安装并验证
 
@@ -147,6 +147,7 @@ bootmux 设置、Herdr 所有权状态或手动复制的补全脚本。
 ```sh
 bootmux --backend tmux doctor
 bootmux --backend herdr doctor
+bootmux --backend zellij doctor
 ```
 
 `doctor` 会检查所选的多路复用器、可选的 `fzf`、`$EDITOR` 和 `$SHELL`。
@@ -158,6 +159,14 @@ herdr --version
 ```
 
 bootmux 要求 Herdr 客户端和服务器相互兼容。它不会静默降级到其他协议。
+
+使用 zellij 时，同样请直接确认版本：
+
+```sh
+zellij --version
+```
+
+bootmux 要求 zellij >= 0.44——这是第一个能从会话外部构建并驱动会话的版本。
 
 ### Shell 补全
 
@@ -270,7 +279,7 @@ bootmux new myapp
 
 这会在所选项目目录中创建 `myapp.yml`，并用 `$EDITOR` 打开。
 
-可以从一个同时适用于两个后端的项目开始：
+可以从一个同时适用于所有后端的项目开始：
 
 ```yaml
 name: myapp
@@ -421,7 +430,7 @@ bootmux stop myapp instance=myapp-review
 
 解析顺序：
 
-1. `--backend tmux|herdr`
+1. `--backend tmux|herdr|zellij`
 2. 当前活动的多路复用器环境
 3. 全局 `default_backend`
 4. tmux
@@ -431,11 +440,17 @@ bootmux stop myapp instance=myapp-review
 ```sh
 bootmux --backend tmux start myapp
 bootmux --backend herdr start myapp
+bootmux --backend zellij start myapp
 ```
+
+zellij 环境通过 `ZELLIJ`、`ZELLIJ_SESSION_NAME` 或 `ZELLIJ_PANE_ID` 识别。
+zellij 会把 `ZELLIJ` 设为字符串 `0`，因此 bootmux 判断的是变量是否存在，
+而不是它是否为真值。
 
 活动的 Herdr 弹窗使用 `HERDR_ACTIVE_*`，其优先级高于继承的 `TMUX` 值。对于
 确实运行在 Herdr 内部的 tmux 进程，bootmux 会询问 Herdr 当前窗格的前台进程
-归属。如果无法判定这种情况，它会报错，而不是猜测。
+归属。如果无法判定嵌套情况，它会列出所有候选后端并报错，而不是猜测；
+tmux 与 zellij 嵌套时没有可用的判定手段，因此必须显式指定 `--backend`。
 
 只在 Herdr 外部设置 `HERDR_SESSION` 会选择一个端点，但不会选择后端。请添加
 `--backend herdr`，或配置默认后端。
@@ -592,7 +607,7 @@ windows:
 - 第一个窗格不能设置 `split`/`ratio`
 - 窗口 `layout` 不能与窗格链同时使用
 
-这种语法在两个后端上均可使用。tmux 会把百分比舍入为整数；Herdr 接收
+这种语法在所有后端上均可使用。tmux 和 zellij 会把百分比舍入为整数；Herdr 接收
 浮点比例，因此两者的比例可能略有不同。
 
 ## 11. 添加生命周期钩子
@@ -635,7 +650,7 @@ on_project_stop:
 ```
 
 每当要创建缺失的拓扑时，都会运行 `on_project_first_start`。它不是永久性的
-安装标记。两个后端也都会在创建追加的窗口/标签页之前运行它。
+安装标记。所有后端也都会在创建追加的窗口/标签页之前运行它。
 
 不同后端处理钩子失败的方式不同：
 
@@ -966,7 +981,7 @@ on_project_restart: |
 6. 使用 `--no-attach` 启动；
 7. 检查实际窗格和工作目录；
 8. 使用完全相同的模板输入停止；
-9. 只有在理解两个后端的路径后，才设置默认后端。
+9. 只有在理解各后端的路径后，才设置默认后端。
 
 兼容别名：
 

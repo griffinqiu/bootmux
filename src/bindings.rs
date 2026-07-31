@@ -3,16 +3,21 @@ use std::fmt::Write as _;
 use anyhow::{bail, Result};
 
 use crate::settings::Backend;
+use crate::zellij_layout::kdl_string;
 
 pub const PICKER_COMMAND: &str = "bootmux picker";
 pub const DEFAULT_TMUX_KEY: &str = "F";
 pub const DEFAULT_HERDR_KEY: &str = "prefix+shift+f";
 pub const DEFAULT_HERDR_POPUP_SIZE: &str = "80%";
+/// zellij binds Ctrl g/h/n/o/p/q/s/t and Alt f/i/o/n/h/j/k/l by default, so
+/// the picker claims one of the few unused control chords.
+pub const DEFAULT_ZELLIJ_KEY: &str = "Ctrl y";
 
 pub fn snippet(backend: Backend) -> String {
     match backend {
         Backend::Tmux => tmux_snippet(),
         Backend::Herdr => herdr_snippet(),
+        Backend::Zellij => zellij_snippet(),
     }
 }
 
@@ -74,6 +79,53 @@ pub fn herdr_snippet_with(key: &str, command: &str, width: &str, height: &str) -
         toml_basic_string(command),
         toml_basic_string(width),
         toml_basic_string(height),
+    ))
+}
+
+/// Generates a zellij `keybinds` block that opens the picker in a floating
+/// pane.
+pub fn zellij_snippet() -> String {
+    zellij_snippet_with(DEFAULT_ZELLIJ_KEY, PICKER_COMMAND)
+        .expect("the built-in zellij picker binding is valid")
+}
+
+pub fn zellij_binding() -> String {
+    zellij_snippet()
+}
+
+pub fn zellij_snippet_with(key: &str, command: &str) -> Result<String> {
+    if key.trim().is_empty() {
+        bail!("zellij binding key cannot be empty");
+    }
+    if key.contains(['"', '\\', '{', '}', ';']) {
+        bail!("zellij binding key {key:?} contains KDL syntax");
+    }
+    validate_command(command)?;
+
+    let argv = crate::shellwords::split(command);
+    if argv.is_empty() {
+        bail!("picker command {command:?} does not parse into an executable and arguments");
+    }
+    let argv = argv
+        .iter()
+        .map(|word| kdl_string(word))
+        .collect::<Vec<_>>()
+        .join(" ");
+
+    // `shared_except "locked"` mirrors zellij's own default bindings so the
+    // picker stays reachable from every mode but the locked one.
+    Ok(format!(
+        "keybinds {{\n    \
+             shared_except \"locked\" {{\n        \
+                 bind {} {{\n            \
+                     Run {argv} {{\n                \
+                         floating true\n                \
+                         close_on_exit true\n            \
+                     }}\n        \
+                 }}\n    \
+             }}\n\
+         }}\n",
+        kdl_string(key),
     ))
 }
 
@@ -221,5 +273,42 @@ mod tests {
     fn backend_dispatches_to_the_matching_format() {
         assert_eq!(snippet(Backend::Tmux), tmux_snippet());
         assert_eq!(snippet(Backend::Herdr), herdr_snippet());
+        assert_eq!(snippet(Backend::Zellij), zellij_snippet());
+    }
+
+    #[test]
+    fn zellij_default_is_a_floating_run_binding_outside_locked_mode() {
+        assert_eq!(
+            zellij_snippet(),
+            "keybinds {\n    \
+                 shared_except \"locked\" {\n        \
+                     bind \"Ctrl y\" {\n            \
+                         Run \"bootmux\" \"picker\" {\n                \
+                             floating true\n                \
+                             close_on_exit true\n            \
+                         }\n        \
+                     }\n    \
+                 }\n\
+             }\n"
+        );
+    }
+
+    #[test]
+    fn zellij_splits_the_picker_command_into_argv_and_escapes_kdl() {
+        let generated = zellij_snippet_with("Alt g", r#"bootmux picker --prompt "go ""#).unwrap();
+        assert!(generated.contains("bind \"Alt g\""));
+        assert!(
+            generated.contains(r#"Run "bootmux" "picker" "--prompt" "go ""#),
+            "{generated}"
+        );
+    }
+
+    #[test]
+    fn zellij_rejects_kdl_injection_and_unusable_commands() {
+        assert!(zellij_snippet_with("", PICKER_COMMAND).is_err());
+        assert!(zellij_snippet_with("Ctrl y\" }; bind \"x", PICKER_COMMAND).is_err());
+        assert!(zellij_snippet_with(DEFAULT_ZELLIJ_KEY, "bootmux picker\nRun evil").is_err());
+        // An unterminated quote parses to no words at all.
+        assert!(zellij_snippet_with(DEFAULT_ZELLIJ_KEY, "\"bootmux").is_err());
     }
 }

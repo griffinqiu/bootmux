@@ -1,14 +1,14 @@
 # Backends and lifecycle
 
 bootmux keeps one project format while preserving the behavior and safety
-boundaries of two different multiplexers. Portable fields share an intent, not
+boundaries of three different multiplexers. Portable fields share an intent, not
 a promise of pixel-identical or process-identical runtime behavior.
 
 ## Backend selection
 
 Resolution order:
 
-1. explicit `--backend tmux|herdr`
+1. explicit `--backend tmux|herdr|zellij`
 2. active multiplexer environment
 3. `default_backend` in bootmux's global settings
 4. tmux
@@ -16,14 +16,21 @@ Resolution order:
 The active-environment rules are:
 
 - `TMUX` identifies tmux.
-- `HERDR_ACTIVE_*` identifies a Herdr popup and wins over inherited `TMUX`.
+- `HERDR_ACTIVE_*` identifies a Herdr popup and wins over every inherited
+  marker.
 - `HERDR_ENV`, `HERDR_WORKSPACE_ID`, `HERDR_TAB_ID`, `HERDR_PANE_ID`, or
   `HERDR_SOCKET_PATH` identify a Herdr environment.
-- When both multiplexers appear active outside a popup, bootmux asks Herdr for
+- `ZELLIJ`, `ZELLIJ_SESSION_NAME`, or `ZELLIJ_PANE_ID` identify a zellij
+  environment. zellij sets `ZELLIJ` to the string `0`, so bootmux tests whether
+  the variable is present, not whether it is truthy.
+- Exactly one active multiplexer selects itself.
+- When tmux and Herdr both appear active outside a popup, bootmux asks Herdr for
   foreground process information. A foreground `tmux` selects tmux; another
   process selects Herdr.
-- If that nested environment cannot be classified safely, bootmux fails and
-  asks for `--backend`.
+- If a nested environment cannot be classified safely, bootmux fails and names
+  every candidate it saw, asking for `--backend`. There is no foreground
+  classifier for a tmux/zellij nesting, so that combination always requires an
+  explicit choice.
 
 `HERDR_SESSION` selects an ambient named endpoint but does not, by itself,
 prove that the process is inside Herdr. Use `--backend herdr` or a global
@@ -31,19 +38,20 @@ default when invoking from outside.
 
 ## Comparison
 
-| Behavior | tmux | Herdr |
-|---|---|---|
-| Normal project container | Session | Workspace |
-| Window mapping | Window | Tab |
-| Pane command transport | `send-keys` through a generated shell script | `herdr pane run` |
-| Repeated start | Reuse session; run restart hook | Reuse/adopt workspace; run restart hook |
-| Pane commands on reuse | Not rerun | Not rerun |
-| `--append` | Add windows to current session | Add tabs to current same-endpoint workspace |
-| Ordinary stop | Render name/socket, then `kill-session` | Require persisted identity, then close workspace |
-| `stop-all` | Heuristic config/session-name match | Persisted ownership records |
-| Server lifecycle on stop | tmux command semantics | Never stop server; close workspaces only |
-| Hook failure behavior | Shell-script dependent | Checked and propagated |
-| Synchronized interactive input | Supported | Truthy values rejected |
+| Behavior | tmux | Herdr | zellij |
+|---|---|---|---|
+| Normal project container | Session | Workspace | Session |
+| Window mapping | Window | Tab | Tab |
+| Pane command transport | `send-keys` through a generated shell script | `herdr pane run` | `action write-chars` then `action send-keys Enter` |
+| Topology construction | Generated shell script | Threaded workspace/tab/pane IDs | One KDL layout document |
+| Repeated start | Reuse session; run restart hook | Reuse/adopt workspace; run restart hook | Reuse session; run restart hook |
+| Pane commands on reuse | Not rerun | Not rerun | Not rerun |
+| `--append` | Add windows to current session | Add tabs to current same-endpoint workspace | Add tabs to current session |
+| Ordinary stop | Render name/socket, then `kill-session` | Require persisted identity, then close workspace | Run stop hook, then `kill-session` |
+| `stop-all` | Heuristic config/session-name match | Persisted ownership records | Heuristic config/session-name match |
+| Server lifecycle on stop | tmux command semantics | Never stop server; close workspaces only | zellij ends the server with its last session |
+| Hook failure behavior | Shell-script dependent | Checked and propagated | Checked and propagated |
+| Synchronized interactive input | Supported | Truthy values rejected | Warned and ignored |
 
 ## Shared lifecycle
 
@@ -225,9 +233,101 @@ On failure, bootmux attempts to close tabs created by the partial append.
 Successful appended tabs are part of the active workspace; `bootmux stop tools`
 cannot later identify and remove them as a separate project.
 
+## zellij backend
+
+The zellij backend requires zellij 0.44 or newer. 0.44 is the first release
+whose CLI can build and drive a session from outside it: `attach
+--create-background` creates a detached session, `action new-tab` reports the
+tab it created, and `--pane-id` aims input at a specific pane.
+
+### Layout-first construction
+
+Where the tmux backend renders a shell script, the zellij backend renders one
+KDL layout document and creates the whole session from it:
+
+```sh
+bootmux --backend zellij debug myapp
+```
+
+zellij debug is offline. It prints the warnings, the resolved session name, the
+complete KDL layout, and a plan with each pane's command count. It does not
+print command bodies and does not inspect live session state.
+
+The layout declares tab names, per-tab working directories, split geometry, pane
+titles, and the initial focus, so bootmux never issues separate focus or
+directory commands. Two KDL constraints are load-bearing: the document must be a
+complete `layout { … }` node, and every node needs its own line.
+
+### Session names
+
+A project maps to the session that shares its name. Unlike tmux, zellij needs no
+rewriting of `.` and `:`, so the project name is used verbatim. zellij derives a
+socket path from the name, so bootmux rejects rather than mangles a name that is
+empty, longer than 36 characters, contains `/`, or contains a control character.
+Use `-n NAME` to pick a shorter session name.
+
+`socket_name` and `socket_path` select a Herdr or tmux endpoint and have no
+zellij equivalent; they are ignored.
+
+### Pane commands
+
+Panes start as ordinary shells. Each command is typed in with `action
+write-chars` and submitted with `action send-keys Enter`, which reproduces
+tmux's `send-keys … C-m` semantics: the shell survives the command, a pane can
+run several commands in order, and `pre_window` composes naturally. Order per
+pane is `pre_window`, then the window's `pre`, then the pane's own commands.
+
+bootmux validates that the input was delivered, not the eventual exit status of
+the program inside the pane.
+
+### Pane identity
+
+Creating a session returns before zellij has finished building its panes, so
+bootmux polls `action list-panes --json` until the topology matches the config,
+for up to 15 seconds.
+
+Panes are matched to the config by geometry: terminal panes are grouped by tab
+and ordered by position within each tab. Titles are deliberately not used,
+because a shell overwrites the title of any pane bootmux did not explicitly
+name.
+
+### Reuse, append, and rollback
+
+Starting a project whose session is already running runs `on_project_start` and
+`on_project_restart`, then focuses or attaches. It does not rebuild topology or
+rerun pane commands.
+
+If anything fails after the session was created, bootmux closes the whole
+session rather than leaving a project that looks started but is not. If that
+cleanup also fails, the error says so.
+
+`--append` adds the project's tabs to the zellij session bootmux is running
+inside, and requires `ZELLIJ_SESSION_NAME`. A failed append closes the tabs it
+created, newest first, and reports any it could not close. Appended tabs become
+part of the host session; `bootmux stop` cannot later identify them as a
+separate project.
+
+### zellij `stop` and `stop-all` are heuristic
+
+`stop` runs `on_project_stop` from the project root and then kills the session
+named by the config. The session is killed even when the hook fails, so a
+project whose root was deleted can still be shut down; the hook's failure is
+still what the command reports.
+
+`stop-all` intersects the running sessions with the discoverable project names,
+exactly like the tmux backend, and stops the session bootmux is attached to
+last. It carries the same limits as tmux `stop-all`: it does not discover
+`.yaml`-only projects, projects started only with an external `-p` path,
+sessions renamed with `-n`, or template-produced names that differ from the
+config basename. A name match is not proof that bootmux created the session.
+
+zellij keeps killed sessions listed as resurrectable for a while. bootmux reads
+the long-form session listing and ignores those `EXITED` entries, so a stopped
+project is not mistaken for a running one.
+
 ## Layouts
 
-Both backends accept:
+All three backends accept:
 
 - `tiled`
 - `even-horizontal`
@@ -237,10 +337,11 @@ Both backends accept:
 - serialized tmux layout strings
 - explicit bootmux pane chains
 
-tmux applies its native layout. Herdr translates the requested topology to a
-binary split (BSP) plan.
+tmux applies its native layout. Herdr and zellij translate the requested
+topology to a binary split (BSP) plan, which zellij then expresses as nested
+KDL `pane` nodes.
 
-For serialized tmux layouts, Herdr strictly checks:
+For serialized tmux layouts, Herdr and zellij strictly check:
 
 - checksum and geometry syntax;
 - unique pane IDs and configured pane count;
@@ -248,8 +349,10 @@ For serialized tmux layouts, Herdr strictly checks:
 
 Translation preserves topology and approximate ratios, not tmux's exact
 cell/pixel geometry. Pane-chain percentages are rounded to an integer for tmux
-while Herdr receives a floating-point ratio, so visual proportions may differ
-slightly.
+and zellij, which sizes panes in whole percent, while Herdr receives a
+floating-point ratio, so visual proportions may differ slightly. zellij sizes
+only the first child of each split and lets its sibling take the remainder, so
+the two shares can never disagree after rounding.
 
 ## Herdr ownership state
 
@@ -325,6 +428,17 @@ label. Only the tmux pane-border controls are ignored.
 Herdr accepts `synchronize: false` as disabled. Truthy values, including
 `true`, `before`, `after`, and the string `"false"`, are rejected because
 Herdr has no equivalent synchronized-input semantics.
+
+zellij warns and ignores truthy values for the same tmux-specific fields, and
+additionally for:
+
+- `socket_name` and `socket_path`, which select a tmux or Herdr endpoint
+- `synchronize`
+
+zellij does have a tab-wide sync mode, but its only CLI entry point toggles the
+*active* tab and cannot be aimed at a specific one, so bootmux does not claim to
+reproduce tmux's per-window `synchronize` semantics. Titled pane mappings remain
+portable: zellij uses the mapping key as the KDL pane name.
 
 [Documentation index](../README.md#documentation) ·
 [Complete user manual](manual.md)

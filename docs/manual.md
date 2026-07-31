@@ -52,21 +52,22 @@ One YAML project describes:
 
 bootmux translates that intent natively:
 
-| Project concept | tmux | Herdr |
-|---|---|---|
-| Project | Session | Workspace |
-| Window | Window | Tab |
-| Pane | Pane | PTY pane |
-| Pane command | `send-keys` | `pane run` |
-| Layout | tmux layout | Herdr BSP splits |
+| Project concept | tmux | Herdr | zellij |
+|---|---|---|---|
+| Project | Session | Workspace | Session |
+| Window | Window | Tab | Tab |
+| Pane | Pane | PTY pane | Pane |
+| Pane command | `send-keys` | `pane run` | `write-chars` + `send-keys Enter` |
+| Layout | tmux layout | Herdr BSP splits | KDL layout |
 
 A normal start creates or reuses one container. `--append` is the exception: it
 adds windows/tabs to the current container instead of creating an independent
 project.
 
 Portable YAML does not imply identical multiplexer behavior. tmux-specific
-options remain tmux-specific, Herdr has stronger ownership checks, and layout
-translation can preserve topology without preserving exact cell geometry.
+options remain tmux-specific, Herdr has stronger ownership checks, zellij
+identifies a project only by its session name, and layout translation can
+preserve topology without preserving exact cell geometry.
 
 ## 2. Install and verify
 
@@ -154,6 +155,7 @@ files copied by hand.
 ```sh
 bootmux --backend tmux doctor
 bootmux --backend herdr doctor
+bootmux --backend zellij doctor
 ```
 
 `doctor` checks the selected multiplexer, optional `fzf`, `$EDITOR`, and
@@ -167,6 +169,15 @@ herdr --version
 
 bootmux requires a compatible Herdr client and server. It will not silently
 downgrade from another protocol.
+
+For zellij, confirm the version directly too:
+
+```sh
+zellij --version
+```
+
+bootmux requires zellij 0.44 or newer, the first release whose CLI can build and
+drive a session from outside it.
 
 ### Shell completion
 
@@ -283,7 +294,7 @@ bootmux new myapp
 This creates `myapp.yml` in the selected project directory and opens it in
 `$EDITOR`.
 
-Start with a project that is valid on both backends:
+Start with a project that is valid on every backend:
 
 ```yaml
 name: myapp
@@ -439,7 +450,7 @@ identity from the unchanged config.
 
 Resolution order:
 
-1. `--backend tmux|herdr`
+1. `--backend tmux|herdr|zellij`
 2. active multiplexer environment
 3. global `default_backend`
 4. tmux
@@ -449,12 +460,19 @@ Examples:
 ```sh
 bootmux --backend tmux start myapp
 bootmux --backend herdr start myapp
+bootmux --backend zellij start myapp
 ```
+
+A zellij environment is recognized from `ZELLIJ`, `ZELLIJ_SESSION_NAME`, or
+`ZELLIJ_PANE_ID`. zellij sets `ZELLIJ` to the string `0`, so bootmux tests
+whether the variable is present rather than whether it is truthy.
 
 An active Herdr popup uses `HERDR_ACTIVE_*` and wins over an inherited `TMUX`
 value. For a genuine tmux-inside-Herdr process, bootmux asks Herdr which
-foreground process owns the pane. If it cannot classify that situation, it
-fails rather than guessing.
+foreground process owns the pane. If it cannot classify a nested situation, it
+names every candidate it saw and fails rather than guessing; there is no
+classifier for a tmux/zellij nesting, so that combination always needs an
+explicit `--backend`.
 
 Only setting `HERDR_SESSION` outside Herdr selects an endpoint; it does not
 select the backend. Add `--backend herdr` or configure the default.
@@ -616,7 +634,8 @@ Rules:
 - no `split`/`ratio` on the first pane
 - no window `layout` together with a pane chain
 
-This syntax works on both backends. tmux rounds the percentage to an integer;
+This syntax works on every backend. tmux and zellij round the percentage to an
+integer;
 Herdr receives a floating-point ratio, so proportions can differ slightly.
 
 ## 11. Add lifecycle hooks
@@ -659,7 +678,7 @@ stop:
 ```
 
 `on_project_first_start` runs whenever missing topology is created. It is not a
-permanent installation marker. Both backends also run it before creating
+permanent installation marker. Every backend also runs it before creating
 appended windows/tabs.
 
 Hook failure differs by backend:
@@ -745,7 +764,8 @@ socket_path: /tmp/myapp-tmux.sock
 ```
 
 This becomes tmux `-L` or `-S`. `socket_path` wins.
-Use an absolute `socket_path` in a project shared across backends.
+Use an absolute `socket_path` in a project shared across backends. zellij has no
+endpoint selector of its own and warns that both fields are ignored.
 
 Extra tmux CLI settings:
 

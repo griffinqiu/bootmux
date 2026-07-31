@@ -1,8 +1,9 @@
 # Project configuration
 
 bootmux reads tmuxinator-style YAML after rendering its safe template syntax.
-The same portable fields can target tmux or Herdr; backend-specific behavior is
-called out below and expanded in [Backends and lifecycle](backends.md).
+The same portable fields can target tmux, Herdr, or zellij; backend-specific
+behavior is called out below and expanded in
+[Backends and lifecycle](backends.md).
 
 ## Complete example
 
@@ -50,7 +51,7 @@ windows:
 
 | Field | Value | Behavior |
 |---|---|---|
-| `name` | scalar, required | tmux session name or Herdr workspace label |
+| `name` | scalar, required | tmux session name, Herdr workspace label, or zellij session name |
 | `root` | path | Project working directory; defaults to the current directory |
 | `windows` | non-empty sequence, required | Windows/tabs to create |
 | `attach` | scalar | Attach/focus after start; defaults to true |
@@ -62,16 +63,18 @@ windows:
 | `on_project_stop` | string or list | Run before a confirmed stop |
 | `startup_window` | name or index | Final selected window/tab; defaults to the first |
 | `startup_pane` | title or index | Final pane in `startup_window`; otherwise that window's `focused_pane` |
-| `socket_name` | scalar | tmux `-L` name or named Herdr session |
-| `socket_path` | path | tmux `-S` path or `HERDR_SOCKET_PATH`; wins over `socket_name` |
+| `socket_name` | scalar | tmux `-L` name or named Herdr session; ignored by zellij |
+| `socket_path` | path | tmux `-S` path or `HERDR_SOCKET_PATH`; wins over `socket_name`; ignored by zellij |
 | `tmux_options` | scalar | Extra tmux CLI options |
 | `tmux_command` | scalar | Replace the `tmux` executable, for example `wemux` |
 | `enable_pane_titles` | scalar | Enable tmux pane-border titles |
 | `pane_title_position` | `top`, `bottom`, or `off` | tmux pane-border position |
 | `pane_title_format` | scalar | tmux pane-border format |
 
-Herdr warns and ignores `tmux_options`, `tmux_command`, and pane-border fields.
-It still uses pane mapping keys as Herdr pane labels.
+Herdr and zellij warn and ignore `tmux_options`, `tmux_command`, and
+pane-border fields. Both still use pane mapping keys as pane labels. zellij
+additionally warns and ignores `socket_name` and `socket_path`, because it
+derives its socket from the session name.
 
 A Herdr `socket_name` must contain 1–64 ASCII letters, digits, `.`, `_`, or
 `-`.
@@ -81,8 +84,13 @@ configured value to `-S`; Herdr expands it relative to the invocation
 environment before recording endpoint identity.
 
 Project names have `.` and `:` replaced with `_` when targeting tmux because
-those characters conflict with tmux target syntax. Herdr retains the project
-name as the workspace label.
+those characters conflict with tmux target syntax. Herdr and zellij retain the
+project name as the workspace label or session name.
+
+A zellij session name must be non-empty, at most 36 characters, and free of `/`
+and control characters, because zellij derives a socket path from it. bootmux
+rejects a name it cannot use rather than mangling it; use `-n NAME` to pick a
+shorter one.
 
 ### Deprecated aliases
 
@@ -149,8 +157,9 @@ windows:
 | `panes` | scalar, mapping, or sequence | Pane definitions |
 
 `synchronize` is tmux-only. Herdr rejects a truthy value because pretending to
-support synchronized interactive input would change the config's meaning.
-Use the YAML boolean `false` to disable it; the string `"false"` is truthy.
+support synchronized interactive input would change the config's meaning; zellij
+warns and ignores it. Use the YAML boolean `false` to disable it; the string
+`"false"` is truthy.
 
 ## Pane forms
 
@@ -225,7 +234,8 @@ Each pane after the first splits the pane immediately before it.
 - A pane chain cannot also set the window's `layout`.
 
 On tmux, the split is emitted directly with `splitw -h/-v -p`. On Herdr, the
-same chain becomes its native BSP split plan.
+same chain becomes its native BSP split plan. On zellij, it becomes nested KDL
+`pane` nodes whose first child carries the rounded percentage.
 
 ## Layouts
 
@@ -237,11 +247,12 @@ Portable preset names are:
 - `main-horizontal`
 - `main-vertical`
 
-tmux applies these natively. Herdr translates them to a deterministic BSP plan.
+tmux applies these natively. Herdr and zellij translate them to a deterministic
+BSP plan.
 
-A serialized tmux layout string is also accepted. Herdr verifies its checksum,
-parses the split tree, checks pane count, and rejects ratios it cannot represent
-instead of silently changing the topology.
+A serialized tmux layout string is also accepted. Herdr and zellij verify its
+checksum, parse the split tree, check pane count, and reject ratios they cannot
+represent instead of silently changing the topology.
 
 See [Layout behavior](backends.md#layouts) for backend details.
 
@@ -256,6 +267,7 @@ Paths support `~` expansion.
 Create working directories before start. tmux starts project setup with
 `/bin/sh -e`, so a failed `cd` aborts the generated start script. Herdr
 preflights the config, then creates panes with the requested working directory.
+zellij declares each tab's directory in the layout it creates the session from.
 
 ## Focus and attachment
 
@@ -264,10 +276,10 @@ preflights the config, then creates panes with the requested working directory.
 Pane indices in YAML are zero-based; tmux automatically adjusts for
 `pane-base-index`.
 
-For a portable `startup_window`, prefer a window name. Herdr treats a number as
-a zero-based logical window index; tmux treats it as a tmux target affected by
-`base-index`. An invalid `focused_pane` falls back to the first pane on tmux,
-while Herdr rejects it during preflight.
+For a portable `startup_window`, prefer a window name. Herdr and zellij treat a
+number as a zero-based logical window index; tmux treats it as a tmux target
+affected by `base-index`. An invalid `focused_pane` falls back to the first pane
+on tmux, while Herdr and zellij reject it while parsing the project.
 
 Attachment precedence is:
 
@@ -309,7 +321,7 @@ stop
   close session/workspace
 ```
 
-On both backends, a successful append follows
+On every backend, a successful append follows
 `on_project_start` → `on_project_first_start` → create appended windows/tabs →
 `on_project_exit`.
 

@@ -1,0 +1,9 @@
+layout {
+    tab name="editor" cwd="/workspace/basic/app" focus=true split_direction="vertical" {
+        pane size="50%" focus=true
+        pane
+    }
+    tab name="shell" cwd="/workspace/basic" {
+        pane name="commands" focus=true
+    }
+}

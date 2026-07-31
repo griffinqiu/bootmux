@@ -16,13 +16,28 @@ pub const DEFAULT_BACKEND_CLI_KEY: &str = "default-backend";
 pub enum Backend {
     Tmux,
     Herdr,
+    Zellij,
 }
 
 impl Backend {
+    /// Every backend in the order used by help text, completions, and
+    /// ambiguity diagnostics.
+    pub const ALL: [Self; 3] = [Self::Tmux, Self::Herdr, Self::Zellij];
+
     pub const fn as_str(self) -> &'static str {
         match self {
             Self::Tmux => "tmux",
             Self::Herdr => "herdr",
+            Self::Zellij => "zellij",
+        }
+    }
+
+    /// The spelling used in prose, which is capitalized for Herdr only.
+    pub const fn display_name(self) -> &'static str {
+        match self {
+            Self::Tmux => "tmux",
+            Self::Herdr => "Herdr",
+            Self::Zellij => "zellij",
         }
     }
 }
@@ -40,9 +55,14 @@ pub struct BackendParseError {
 
 impl fmt::Display for BackendParseError {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let expected = Backend::ALL
+            .iter()
+            .map(|backend| format!("{:?}", backend.as_str()))
+            .collect::<Vec<_>>()
+            .join(", ");
         write!(
             formatter,
-            "invalid backend {:?}; expected \"tmux\" or \"herdr\"",
+            "invalid backend {:?}; expected one of {expected}",
             self.value
         )
     }
@@ -54,13 +74,13 @@ impl FromStr for Backend {
     type Err = BackendParseError;
 
     fn from_str(value: &str) -> std::result::Result<Self, Self::Err> {
-        match value.trim().to_ascii_lowercase().as_str() {
-            "tmux" => Ok(Self::Tmux),
-            "herdr" => Ok(Self::Herdr),
-            _ => Err(BackendParseError {
+        let normalized = value.trim().to_ascii_lowercase();
+        Backend::ALL
+            .into_iter()
+            .find(|backend| backend.as_str() == normalized)
+            .ok_or_else(|| BackendParseError {
                 value: value.to_string(),
-            }),
-        }
+            })
     }
 }
 
@@ -69,11 +89,25 @@ pub struct ActiveEnvironment {
     pub tmux: bool,
     pub herdr: bool,
     pub herdr_popup: bool,
+    pub zellij: bool,
 }
 
 impl ActiveEnvironment {
-    pub const fn is_ambiguous(self) -> bool {
-        self.tmux && self.herdr && !self.herdr_popup
+    /// The backends whose environment markers are present, in [`Backend::ALL`]
+    /// order.
+    pub fn backends(self) -> Vec<Backend> {
+        Backend::ALL
+            .into_iter()
+            .filter(|backend| match backend {
+                Backend::Tmux => self.tmux,
+                Backend::Herdr => self.herdr,
+                Backend::Zellij => self.zellij,
+            })
+            .collect()
+    }
+
+    pub fn is_ambiguous(self) -> bool {
+        !self.herdr_popup && self.backends().len() > 1
     }
 }
 
@@ -210,11 +244,17 @@ pub fn active_environment(env: &Env) -> ActiveEnvironment {
         .map(|value| !value.is_empty())
         .unwrap_or(false)
         || populated("TMUX");
+    // zellij sets ZELLIJ to "0" inside a session, so presence rather than
+    // truthiness is the marker.
+    let zellij = ["ZELLIJ", "ZELLIJ_SESSION_NAME", "ZELLIJ_PANE_ID"]
+        .into_iter()
+        .any(&populated);
 
     ActiveEnvironment {
         tmux,
         herdr,
         herdr_popup,
+        zellij,
     }
 }
 
@@ -244,10 +284,11 @@ pub fn resolve_backend_with_classifier(
     if active.herdr_popup {
         return Ok(Backend::Herdr);
     }
-    match (active.tmux, active.herdr) {
-        (true, false) => return Ok(Backend::Tmux),
-        (false, true) => return Ok(Backend::Herdr),
-        (true, true) => {
+    let active_backends = active.backends();
+    match active_backends.as_slice() {
+        [] => {}
+        [backend] => return Ok(*backend),
+        several => {
             let classified = classifier
                 .map(|classifier| classifier.classify_foreground(env))
                 .transpose()?
@@ -255,12 +296,16 @@ pub fn resolve_backend_with_classifier(
             if let Some(backend) = classified {
                 return Ok(backend);
             }
+            let names = several
+                .iter()
+                .map(|backend| backend.display_name())
+                .collect::<Vec<_>>()
+                .join(", ");
             bail!(
-                "both tmux and Herdr environments are active and the foreground \
-                 multiplexer is ambiguous; choose one explicitly with --backend"
+                "several multiplexer environments are active ({names}) and the \
+                 foreground multiplexer is ambiguous; choose one explicitly with --backend"
             );
         }
-        (false, false) => {}
     }
 
     Ok(default_backend(env)?.unwrap_or(Backend::Tmux))
@@ -516,12 +561,14 @@ mod tests {
     fn backend_parsing_is_case_insensitive_and_display_is_canonical() {
         assert_eq!("TMUX".parse::<Backend>().unwrap(), Backend::Tmux);
         assert_eq!(" Herdr ".parse::<Backend>().unwrap(), Backend::Herdr);
+        assert_eq!(" ZELLIJ ".parse::<Backend>().unwrap(), Backend::Zellij);
         assert_eq!(Backend::Herdr.to_string(), "herdr");
-        assert!("screen"
-            .parse::<Backend>()
-            .unwrap_err()
-            .to_string()
-            .contains("tmux"));
+        assert_eq!(Backend::Zellij.to_string(), "zellij");
+
+        let error = "screen".parse::<Backend>().unwrap_err().to_string();
+        for backend in Backend::ALL {
+            assert!(error.contains(backend.as_str()), "{error}");
+        }
     }
 
     #[test]
@@ -646,7 +693,8 @@ mod tests {
             ActiveEnvironment {
                 tmux: true,
                 herdr: false,
-                herdr_popup: false
+                herdr_popup: false,
+                zellij: false,
             }
         );
 
@@ -666,6 +714,49 @@ mod tests {
         let popup = active_environment(&env_with(&[("HERDR_ACTIVE_PANE_ID", "4")]));
         assert!(popup.herdr);
         assert!(popup.herdr_popup);
+    }
+
+    #[test]
+    fn detects_zellij_from_any_of_its_pane_markers() {
+        // zellij sets ZELLIJ to the literal "0", which is not truthy.
+        let zellij = active_environment(&env_with(&[("ZELLIJ", "0")]));
+        assert_eq!(
+            zellij,
+            ActiveEnvironment {
+                tmux: false,
+                herdr: false,
+                herdr_popup: false,
+                zellij: true,
+            }
+        );
+        assert_eq!(zellij.backends(), vec![Backend::Zellij]);
+        assert!(!zellij.is_ambiguous());
+
+        for marker in ["ZELLIJ_SESSION_NAME", "ZELLIJ_PANE_ID"] {
+            assert!(active_environment(&env_with(&[(marker, "present")])).zellij);
+        }
+        assert!(!active_environment(&env_with(&[("ZELLIJ", "")])).zellij);
+    }
+
+    #[test]
+    fn a_single_active_backend_wins_and_three_nested_ones_are_ambiguous() {
+        let zellij = env_with(&[("ZELLIJ", "0")]);
+        assert_eq!(resolve_backend(None, &zellij).unwrap(), Backend::Zellij);
+
+        let nested = env_with(&[("TMUX", "/tmp/tmux"), ("ZELLIJ", "0"), ("HERDR_ENV", "1")]);
+        assert!(active_environment(&nested).is_ambiguous());
+        let error = resolve_backend(None, &nested).unwrap_err().to_string();
+        assert!(error.contains("ambiguous"), "{error}");
+        assert!(error.contains("--backend"), "{error}");
+        for backend in Backend::ALL {
+            assert!(error.contains(backend.display_name()), "{error}");
+        }
+
+        let classify_zellij = |_env: &Env| Ok(Some(Backend::Zellij));
+        assert_eq!(
+            resolve_backend_with_classifier(None, &nested, Some(&classify_zellij)).unwrap(),
+            Backend::Zellij
+        );
     }
 
     #[test]

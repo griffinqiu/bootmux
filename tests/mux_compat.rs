@@ -6,7 +6,7 @@ use bootmux::commands::run::{debug_with_backend, StartParams};
 use bootmux::env::Env;
 use bootmux::project::{LoadOptions, Project};
 use bootmux::settings::Backend;
-use bootmux::spec::HerdrProjectSpec;
+use bootmux::spec::ProjectSpec;
 use bootmux::tmux::MockTmux;
 
 struct FixtureCase {
@@ -14,6 +14,7 @@ struct FixtureCase {
     settings: &'static [(&'static str, &'static str)],
     tmux_error: Option<&'static str>,
     herdr_error: Option<&'static str>,
+    zellij_error: Option<&'static str>,
 }
 
 const NO_SETTINGS: &[(&str, &str)] = &[];
@@ -29,114 +30,133 @@ const CASES: &[FixtureCase] = &[
         settings: NO_SETTINGS,
         tmux_error: None,
         herdr_error: None,
+        zellij_error: None,
     },
     FixtureCase {
         file: "focused_pane.yml",
         settings: NO_SETTINGS,
         tmux_error: None,
         herdr_error: None,
+        zellij_error: None,
     },
     FixtureCase {
         file: "hooks.yml",
         settings: NO_SETTINGS,
         tmux_error: None,
         herdr_error: None,
+        zellij_error: None,
     },
     FixtureCase {
         file: "nameless_window.yml",
         settings: NO_SETTINGS,
         tmux_error: None,
         herdr_error: None,
+        zellij_error: None,
     },
     FixtureCase {
         file: "noroot.yml",
         settings: NO_SETTINGS,
         tmux_error: None,
         herdr_error: None,
+        zellij_error: None,
     },
     FixtureCase {
         file: "nowindows.yml",
         settings: NO_SETTINGS,
         tmux_error: Some("Your project file should include some windows."),
         herdr_error: Some("Your project file should include some windows."),
+        zellij_error: Some("Your project file should include some windows."),
     },
     FixtureCase {
         file: "pane_titles.yml",
         settings: NO_SETTINGS,
         tmux_error: None,
         herdr_error: None,
+        zellij_error: None,
     },
     FixtureCase {
         file: "sample.yml",
         settings: NO_SETTINGS,
         tmux_error: None,
         herdr_error: None,
+        zellij_error: None,
     },
     FixtureCase {
         file: "sample_deprecations.yml",
         settings: NO_SETTINGS,
         tmux_error: None,
         herdr_error: None,
+        zellij_error: None,
     },
     FixtureCase {
         file: "sample_emoji_as_name.yml",
         settings: NO_SETTINGS,
         tmux_error: None,
         herdr_error: None,
+        zellij_error: None,
     },
     FixtureCase {
         file: "sample_literals_as_window_name.yml",
         settings: NO_SETTINGS,
         tmux_error: None,
         herdr_error: None,
+        zellij_error: None,
     },
     FixtureCase {
         file: "sample_number_as_name.yml",
         settings: NO_SETTINGS,
         tmux_error: None,
         herdr_error: None,
+        zellij_error: None,
     },
     FixtureCase {
         file: "sample_wemux.yml",
         settings: NO_SETTINGS,
         tmux_error: None,
         herdr_error: None,
+        zellij_error: None,
     },
     FixtureCase {
         file: "socket.yml",
         settings: NO_SETTINGS,
         tmux_error: None,
         herdr_error: None,
+        zellij_error: None,
     },
     FixtureCase {
         file: "startup.yml",
         settings: NO_SETTINGS,
         tmux_error: None,
         herdr_error: None,
+        zellij_error: None,
     },
     FixtureCase {
         file: "synchronize.yml",
         settings: NO_SETTINGS,
         tmux_error: None,
         herdr_error: Some("`synchronize` is not supported by the Herdr backend"),
+        zellij_error: None,
     },
     FixtureCase {
         file: "template.yml",
         settings: TEMPLATE_SETTINGS,
         tmux_error: None,
         herdr_error: None,
+        zellij_error: None,
     },
     FixtureCase {
         file: "window_root.yml",
         settings: NO_SETTINGS,
         tmux_error: None,
         herdr_error: None,
+        zellij_error: None,
     },
     FixtureCase {
         file: "demo.yml",
         settings: NO_SETTINGS,
         tmux_error: None,
         herdr_error: None,
+        zellij_error: None,
     },
 ];
 
@@ -186,6 +206,7 @@ fn assert_backend_case(case: &FixtureCase, backend: Backend) {
     let expected_error = match backend {
         Backend::Tmux => case.tmux_error,
         Backend::Herdr => case.herdr_error,
+        Backend::Zellij => case.zellij_error,
     };
     let result = debug_with_backend(&test_env(), &MockTmux::default(), backend, params(case));
 
@@ -225,6 +246,14 @@ fn herdr_debug_matches_the_vendored_mux_fixture_matrix() {
     assert_eq!(CASES.len(), 19);
     for case in CASES {
         assert_backend_case(case, Backend::Herdr);
+    }
+}
+
+#[test]
+fn zellij_debug_matches_the_vendored_mux_fixture_matrix() {
+    assert_eq!(CASES.len(), 19);
+    for case in CASES {
+        assert_backend_case(case, Backend::Zellij);
     }
 }
 
@@ -330,13 +359,14 @@ fn mux_fixture_semantics_are_preserved_across_backends() {
     assert!(
         bootmux::script::render_stop(&template_for_stop).contains("kill-session -t template_test")
     );
-    let herdr_template_for_stop = HerdrProjectSpec::load(
+    let herdr_template_for_stop = ProjectSpec::load(
         fixture_path(template_case.file),
         &fixture(template_case.file),
         &HashMap::new(),
         &[],
         LoadOptions::default(),
         &env,
+        Backend::Herdr,
     )
     .unwrap();
     assert_eq!(herdr_template_for_stop.name, "template_test");
@@ -366,13 +396,14 @@ fn mux_fixture_semantics_are_preserved_across_backends() {
     .unwrap();
     assert_eq!(wemux.tmux_command(), "wemux");
 
-    let sample = HerdrProjectSpec::load(
+    let sample = ProjectSpec::load(
         fixture_path("sample.yml"),
         &fixture("sample.yml"),
         &HashMap::new(),
         &[],
         LoadOptions::default(),
         &env,
+        Backend::Herdr,
     )
     .unwrap();
     assert_eq!(sample.windows.len(), 9);
@@ -401,37 +432,40 @@ fn mux_fixture_semantics_are_preserved_across_backends() {
         "project startup selection overrode the window's focused_pane: {final_pane_selection}"
     );
 
-    let focused = HerdrProjectSpec::load(
+    let focused = ProjectSpec::load(
         fixture_path("focused_pane.yml"),
         &fixture("focused_pane.yml"),
         &HashMap::new(),
         &[],
         LoadOptions::default(),
         &env,
+        Backend::Herdr,
     )
     .unwrap();
     assert_eq!(focused.startup_pane, None);
     assert_eq!(focused.windows[0].focused_pane, 1);
 
-    let startup = HerdrProjectSpec::load(
+    let startup = ProjectSpec::load(
         fixture_path("startup.yml"),
         &fixture("startup.yml"),
         &HashMap::new(),
         &[],
         LoadOptions::default(),
         &env,
+        Backend::Herdr,
     )
     .unwrap();
     assert_eq!(startup.startup_window, 2);
     assert_eq!(startup.startup_pane, Some(1));
 
-    let detached = HerdrProjectSpec::load(
+    let detached = ProjectSpec::load(
         fixture_path("detach.yml"),
         &fixture("detach.yml"),
         &HashMap::new(),
         &[],
         LoadOptions::default(),
         &env,
+        Backend::Herdr,
     )
     .unwrap();
     assert!(!detached.attach);

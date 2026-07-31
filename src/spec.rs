@@ -1,14 +1,19 @@
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
+use std::str::FromStr;
 
 use anyhow::{anyhow, bail, Result};
 use serde_norway::Value;
 
 use crate::env::Env;
+use crate::layout::{
+    Layout, LayoutPreset, PaneChainBuilder, SplitDirection as LayoutSplitDirection,
+};
 use crate::project::{
     LoadOptions, HOOK_ON_PROJECT_EXIT, HOOK_ON_PROJECT_FIRST_START, HOOK_ON_PROJECT_RESTART,
     HOOK_ON_PROJECT_START, HOOK_ON_PROJECT_STOP,
 };
+use crate::settings::Backend;
 use crate::template;
 use crate::util::expand_path;
 use crate::yaml_ext::{
@@ -28,9 +33,9 @@ impl SplitDirection {
             Some("right") => Ok(Self::Right),
             Some("down") => Ok(Self::Down),
             Some(other) => {
-                bail!("Herdr pane split direction must be `right` or `down`, got `{other}`.")
+                bail!("Pane split direction must be `right` or `down`, got `{other}`.")
             }
-            None => bail!("Herdr pane split direction must be `right` or `down`."),
+            None => bail!("Pane split direction must be `right` or `down`."),
         }
     }
 }
@@ -73,6 +78,74 @@ impl WindowSpec {
             self.panes.clone()
         }
     }
+
+    /// Resolves this window's `layout` field, pane chain, or default into the
+    /// backend-neutral binary split tree.
+    ///
+    /// Panes in the returned tree are numbered in configured order, so a
+    /// serialized tmux layout is reindexed from its own pane ids.
+    pub fn layout_tree(&self) -> Result<Layout> {
+        let pane_count = self.effective_panes().len();
+        if self.pane_chain {
+            let mut builder = PaneChainBuilder::new(0);
+            for (index, pane) in self.panes.iter().enumerate().skip(1) {
+                let split = pane.split.ok_or_else(|| {
+                    anyhow!("pane chain entry {index} is missing its split definition")
+                })?;
+                builder = builder.split_pane(
+                    index,
+                    match split.direction {
+                        SplitDirection::Right => LayoutSplitDirection::Right,
+                        SplitDirection::Down => LayoutSplitDirection::Down,
+                    },
+                    split.ratio,
+                )?;
+            }
+            return Ok(builder.build());
+        }
+
+        match self.layout.as_deref() {
+            None | Some("") => Ok(Layout::default_tiled(pane_count)?),
+            Some(layout) => match LayoutPreset::from_str(layout) {
+                Ok(preset) => Ok(preset.build(pane_count)?),
+                Err(_) => {
+                    let parsed = Layout::parse_tmux(layout).map_err(|error| {
+                        anyhow!("invalid tmux serialized layout `{layout}`: {error}")
+                    })?;
+                    if parsed.pane_count() != pane_count {
+                        bail!(
+                            "tmux serialized layout contains {} panes but {pane_count} panes are configured.",
+                            parsed.pane_count()
+                        );
+                    }
+                    let pane_indices = parsed
+                        .pane_indices()
+                        .into_iter()
+                        .enumerate()
+                        .map(|(configured_index, serialized_id)| (serialized_id, configured_index))
+                        .collect::<HashMap<_, _>>();
+                    Ok(reindex_layout(&parsed, &pane_indices))
+                }
+            },
+        }
+    }
+}
+
+fn reindex_layout(layout: &Layout, pane_indices: &HashMap<usize, usize>) -> Layout {
+    match layout {
+        Layout::Pane(index) => Layout::Pane(pane_indices[index]),
+        Layout::Split {
+            direction,
+            ratio,
+            first,
+            second,
+        } => Layout::Split {
+            direction: *direction,
+            ratio: *ratio,
+            first: Box::new(reindex_layout(first, pane_indices)),
+            second: Box::new(reindex_layout(second, pane_indices)),
+        },
+    }
 }
 
 #[derive(Clone, Debug, Default, PartialEq)]
@@ -85,7 +158,7 @@ pub struct Hooks {
 }
 
 #[derive(Clone, Debug, PartialEq)]
-pub struct HerdrProjectSpec {
+pub struct ProjectSpec {
     pub source_path: PathBuf,
     pub name: String,
     pub root: String,
@@ -103,7 +176,7 @@ pub struct HerdrProjectSpec {
     pub warnings: Vec<String>,
 }
 
-impl HerdrProjectSpec {
+impl ProjectSpec {
     #[allow(clippy::too_many_arguments)]
     pub fn load(
         source_path: impl AsRef<Path>,
@@ -112,6 +185,7 @@ impl HerdrProjectSpec {
         args: &[String],
         opts: LoadOptions,
         env: &Env,
+        backend: Backend,
     ) -> Result<Self> {
         if opts.force_attach && opts.force_detach {
             bail!("Cannot force_attach and force_detach at the same time");
@@ -143,10 +217,42 @@ impl HerdrProjectSpec {
             bail!("Your project file should include some windows.");
         }
 
+        let backend_name = backend.display_name();
+        let mut warnings = Vec::new();
+        for key in ["tmux_options", "cli_args", "tmux_command"] {
+            if truthy(get(&yaml, key)) {
+                warnings.push(format!(
+                    "`{key}` is tmux-specific and is ignored by the {backend_name} backend."
+                ));
+            }
+        }
+        for key in [
+            "enable_pane_titles",
+            "pane_title_position",
+            "pane_title_format",
+        ] {
+            if truthy(get(&yaml, key)) {
+                warnings.push(format!(
+                    "`{key}` only controls tmux pane borders and is ignored by {backend_name}."
+                ));
+            }
+        }
+        if backend == Backend::Zellij {
+            // zellij derives its socket from the session name and has no
+            // endpoint selector of its own.
+            for key in ["socket_name", "socket_path"] {
+                if truthy(get(&yaml, key)) {
+                    warnings.push(format!(
+                        "`{key}` selects a tmux or Herdr endpoint and is ignored by zellij."
+                    ));
+                }
+            }
+        }
+
         let no_pre_window = opts.no_pre_window;
         let windows = entries
             .iter()
-            .map(|entry| build_window(entry, &root, &env.home))
+            .map(|entry| build_window(entry, &root, &env.home, backend, &mut warnings))
             .collect::<Result<Vec<_>>>()?;
 
         let startup_window =
@@ -164,26 +270,6 @@ impl HerdrProjectSpec {
 
         let yaml_attach = mux_attach(get(&yaml, "attach"));
         let attach = opts.force_attach || (!opts.force_detach && yaml_attach);
-
-        let mut warnings = Vec::new();
-        for key in ["tmux_options", "cli_args", "tmux_command"] {
-            if truthy(get(&yaml, key)) {
-                warnings.push(format!(
-                    "`{key}` is tmux-specific and is ignored by the Herdr backend."
-                ));
-            }
-        }
-        for key in [
-            "enable_pane_titles",
-            "pane_title_position",
-            "pane_title_format",
-        ] {
-            if truthy(get(&yaml, key)) {
-                warnings.push(format!(
-                    "`{key}` only controls tmux pane borders and is ignored by Herdr."
-                ));
-            }
-        }
 
         let source_path = source_path.as_ref();
         let source_path = std::fs::canonicalize(source_path)
@@ -232,7 +318,13 @@ fn canonicalize_existing(path: &str) -> String {
         .into_owned()
 }
 
-fn build_window(entry: &Value, project_root: &str, home: &str) -> Result<WindowSpec> {
+fn build_window(
+    entry: &Value,
+    project_root: &str,
+    home: &str,
+    backend: Backend,
+    warnings: &mut Vec<String>,
+) -> Result<WindowSpec> {
     if !matches!(entry, Value::Mapping(_)) {
         bail!("Failed to parse config file: window entries must be mappings, e.g. `- editor: vim`");
     }
@@ -241,9 +333,19 @@ fn build_window(entry: &Value, project_root: &str, home: &str) -> Result<WindowS
     let body = body.unwrap_or(&Value::Null);
 
     if truthy(get(body, "synchronize")) {
-        bail!(
-            "`synchronize` is not supported by the Herdr backend because it changes interactive input semantics."
-        );
+        match backend {
+            Backend::Herdr => bail!(
+                "`synchronize` is not supported by the Herdr backend because it changes interactive input semantics."
+            ),
+            // zellij has a tab-wide sync mode, but its only CLI entry point
+            // toggles the *active* tab and cannot be aimed at a specific one,
+            // so bootmux does not claim to reproduce tmux's semantics.
+            Backend::Zellij => warnings.push(
+                "`synchronize` controls tmux synchronized panes and is ignored by zellij."
+                    .to_string(),
+            ),
+            Backend::Tmux => {}
+        }
     }
 
     let root = get_string(body, "root")
@@ -257,7 +359,7 @@ fn build_window(entry: &Value, project_root: &str, home: &str) -> Result<WindowS
     let (panes, pane_chain) = parse_panes(get(body, "panes"))?;
     if pane_chain && layout.is_some() {
         bail!(
-            "A Herdr pane chain (`split`/`ratio`/`command(s)`) cannot be combined with a window `layout`."
+            "A pane chain (`split`/`ratio`/`command(s)`) cannot be combined with a window `layout`."
         );
     }
 
@@ -319,7 +421,7 @@ fn parse_panes(value: Option<&Value>) -> Result<(Vec<PaneSpec>, bool)> {
             let command = get(body, "command");
             let commands = get(body, "commands");
             if command.is_some() && commands.is_some() {
-                bail!("Herdr pane {index} cannot specify both `command` and `commands`.");
+                bail!("Pane {index} cannot specify both `command` and `commands`.");
             }
             let commands = command_list(command.or(commands));
             let direction = get(body, "split").map(SplitDirection::parse).transpose()?;
@@ -330,7 +432,7 @@ fn parse_panes(value: Option<&Value>) -> Result<(Vec<PaneSpec>, bool)> {
         };
 
         if index == 0 && (direction.is_some() || ratio.is_some()) {
-            bail!("The first pane in a Herdr pane chain cannot specify `split` or `ratio`.");
+            bail!("The first pane in a pane chain cannot specify `split` or `ratio`.");
         }
         let split = if index == 0 {
             None
@@ -385,9 +487,9 @@ fn parse_ratio(value: &Value) -> Result<f64> {
         Value::String(string) => string.parse().ok(),
         _ => None,
     }
-    .ok_or_else(|| anyhow!("Herdr pane split `ratio` must be a number from 0.1 through 0.9."))?;
+    .ok_or_else(|| anyhow!("Pane split `ratio` must be a number from 0.1 through 0.9."))?;
     if !(0.1..=0.9).contains(&ratio) {
-        bail!("Herdr pane split `ratio` must be from 0.1 through 0.9, got {ratio}.");
+        bail!("Pane split `ratio` must be from 0.1 through 0.9, got {ratio}.");
     }
     Ok(ratio)
 }
@@ -448,14 +550,19 @@ mod tests {
         }
     }
 
-    fn load(source: &str) -> Result<HerdrProjectSpec> {
-        HerdrProjectSpec::load(
+    fn load(source: &str) -> Result<ProjectSpec> {
+        load_for(source, Backend::Herdr)
+    }
+
+    fn load_for(source: &str, backend: Backend) -> Result<ProjectSpec> {
+        ProjectSpec::load(
             "/work/demo.yml",
             source,
             &HashMap::new(),
             &[],
             LoadOptions::default(),
             &env(),
+            backend,
         )
     }
 
@@ -561,6 +668,77 @@ windows:
                 .unwrap_err()
                 .to_string();
         assert!(error.contains("not supported"));
+    }
+
+    #[test]
+    fn serialized_pane_ids_map_to_configured_visual_order() {
+        // tmux numbers panes by its own ids; bootmux renumbers them into the
+        // order the panes appear in the config.
+        let payload = "100x10,0,0{50x10,0,0,8,49x10,51,0,4}";
+        let serialized = format!(
+            "{:04x},{payload}",
+            crate::layout::tmux_layout_checksum(payload)
+        );
+        let spec = load(&format!(
+            "name: x\nwindows:\n  - grid:\n      layout: \"{serialized}\"\n      \
+             panes:\n        - left\n        - right\n"
+        ))
+        .unwrap();
+
+        let tree = spec.windows[0].layout_tree().unwrap();
+        // tmux ids 8 and 4 become configured indices 0 and 1.
+        assert_eq!(tree.pane_indices(), vec![0, 1]);
+        assert!(matches!(
+            tree,
+            Layout::Split {
+                direction: LayoutSplitDirection::Right,
+                ..
+            }
+        ));
+    }
+
+    #[test]
+    fn a_serialized_layout_must_match_the_configured_pane_count() {
+        let payload = "100x10,0,0{50x10,0,0,8,49x10,51,0,4}";
+        let serialized = format!(
+            "{:04x},{payload}",
+            crate::layout::tmux_layout_checksum(payload)
+        );
+        let spec = load(&format!(
+            "name: x\nwindows:\n  - grid:\n      layout: \"{serialized}\"\n      \
+             panes:\n        - only\n"
+        ))
+        .unwrap();
+
+        assert!(spec.windows[0]
+            .layout_tree()
+            .unwrap_err()
+            .to_string()
+            .contains("2 panes but 1 panes are configured"));
+    }
+
+    #[test]
+    fn ignored_field_warnings_name_the_selected_backend() {
+        let source = "name: x\ntmux_command: /usr/local/bin/tmux\nenable_pane_titles: true\n\
+                      socket_name: work\n\
+                      windows:\n  - x:\n      synchronize: after\n      panes: [vim]\n";
+
+        let herdr = load_for(source, Backend::Herdr).unwrap_err().to_string();
+        assert!(herdr.contains("not supported"), "{herdr}");
+
+        let zellij = load_for(source, Backend::Zellij).unwrap();
+        assert_eq!(
+            zellij.warnings,
+            vec![
+                "`tmux_command` is tmux-specific and is ignored by the zellij backend.".to_string(),
+                "`enable_pane_titles` only controls tmux pane borders and is ignored by zellij."
+                    .to_string(),
+                "`socket_name` selects a tmux or Herdr endpoint and is ignored by zellij."
+                    .to_string(),
+                "`synchronize` controls tmux synchronized panes and is ignored by zellij."
+                    .to_string(),
+            ]
+        );
     }
 
     #[test]
