@@ -100,11 +100,11 @@ configuration:
 
 ```sh
 mise use -g rust
-mise use -g cargo:bootmux@0.1.2
+mise use -g cargo:bootmux@0.1.3
 bootmux version
 ```
 
-Use `mise use cargo:bootmux@0.1.2` without `-g` when a project should pin
+Use `mise use cargo:bootmux@0.1.3` without `-g` when a project should pin
 bootmux locally.
 
 mise filters fuzzy requests such as `latest` through a 24-hour minimum release

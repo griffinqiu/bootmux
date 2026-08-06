@@ -4,6 +4,8 @@ All notable changes to bootmux are documented here.
 
 ## [Unreleased]
 
+## [0.1.3] - 2026-08-06
+
 - Accept Herdr socket protocol 19 (Herdr 0.8.0) alongside protocol 17. Herdr
   0.8.0 kept every CLI shape and JSON field bootmux reads, so upgrading Herdr
   no longer fails with `client Herdr protocol 19 is unsupported`.
