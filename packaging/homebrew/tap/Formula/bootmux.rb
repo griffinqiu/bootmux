@@ -1,8 +1,8 @@
 class Bootmux < Formula
   desc "Run tmuxinator-style YAML projects in tmux, Herdr, or zellij"
   homepage "https://github.com/griffinqiu/bootmux"
-  url "https://github.com/griffinqiu/bootmux/archive/refs/tags/v0.1.2.tar.gz"
-  sha256 "df37dc6041f367c7a81e714a425f9952f18649129fde48be86a0b3c94a26376d"
+  url "https://github.com/griffinqiu/bootmux/archive/refs/tags/v0.1.3.tar.gz"
+  sha256 "a96fd1d8446ae819a58e333bd1b29e90b85d11764be3cfa23cc7837d718239ab"
   license "MIT"
   head "https://github.com/griffinqiu/bootmux.git", branch: "main"
 
