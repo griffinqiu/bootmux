@@ -75,7 +75,7 @@ Requirements:
 
 - a Unix-like operating system
 - Rust and Cargo 1.89 or newer
-- tmux 2.6 or newer, Herdr 0.7.5/protocol 17, or both
+- tmux 2.6 or newer, Herdr 0.7.5/protocol 17 or 19, or both
 - `$SHELL` and `$EDITOR`
 - optional `fzf`
 
@@ -1119,8 +1119,8 @@ herdr --version
 bootmux --backend herdr doctor
 ```
 
-Upgrade the Herdr client/server pair so both use protocol 17 and meet the
-minimum version.
+Upgrade the Herdr client/server pair so both use a supported protocol (17 or
+19) and meet the minimum version.
 
 ### Herdr stop reports endpoint or identity mismatch
 

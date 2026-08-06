@@ -1,4 +1,4 @@
-//! Typed command-line integration for Herdr 0.7.5 (socket protocol 17).
+//! Typed command-line integration for Herdr (socket protocols 17 and 19).
 //!
 //! The adapter deliberately drives Herdr through its documented JSON CLI
 //! rather than duplicating the socket protocol.  Every invocation pins one
@@ -22,7 +22,10 @@ use serde::{Deserialize, Serialize};
 pub use crate::process::{CommandOutput, CommandRunner, Invocation, ProcessRunner};
 
 pub const MINIMUM_HERDR_VERSION: &str = "0.7.5";
-pub const REQUIRED_PROTOCOL: u32 = 17;
+/// Socket protocol revisions this adapter has been verified against. Herdr
+/// 0.8.0 bumped the protocol to 19 without changing any CLI shape or JSON
+/// field bootmux reads, so both revisions are accepted instead of pinning one.
+pub const SUPPORTED_PROTOCOLS: &[u32] = &[17, 19];
 pub const STATE_INDEX_VERSION: u32 = 1;
 pub const STATE_INDEX_FILE_NAME: &str = "herdr-workspaces.json";
 
@@ -396,8 +399,8 @@ impl<R: CommandRunner> Herdr<R> {
         Ok(response.result.focus)
     }
 
-    /// Focuses an exact pane through Herdr's protocol-17 newline-delimited
-    /// socket API. The 0.7.5 CLI only exposes directional neighbor focus.
+    /// Focuses an exact pane through Herdr's newline-delimited socket API.
+    /// The CLI only exposes directional neighbor focus.
     #[cfg(unix)]
     pub fn focus_pane_direct(&self, pane_id: &str) -> Result<PaneInfo> {
         use std::io::{BufRead, BufReader};
@@ -495,7 +498,7 @@ impl<R: CommandRunner> Herdr<R> {
     pub fn focus_pane_direct(&self, _pane_id: &str) -> Result<PaneInfo> {
         Err(Error::UnsupportedOperation {
             operation: "exact Herdr pane focus",
-            reason: "Herdr protocol-17 local socket focus is only implemented on Unix",
+            reason: "Herdr local socket focus is only implemented on Unix",
         })
     }
 
@@ -737,6 +740,16 @@ impl fmt::Display for HerdrVersion {
     }
 }
 
+/// Renders the accepted protocol revisions for user-facing messages, e.g.
+/// `17 or 19`.
+pub fn describe_protocols(protocols: &[u32]) -> String {
+    protocols
+        .iter()
+        .map(u32::to_string)
+        .collect::<Vec<_>>()
+        .join(" or ")
+}
+
 fn validate_component(component: &'static str, version: &str, protocol: u32) -> Result<()> {
     let parsed = HerdrVersion::parse(version).ok_or_else(|| Error::InvalidVersion {
         component,
@@ -751,11 +764,11 @@ fn validate_component(component: &'static str, version: &str, protocol: u32) -> 
             minimum: MINIMUM_HERDR_VERSION,
         });
     }
-    if protocol != REQUIRED_PROTOCOL {
+    if !SUPPORTED_PROTOCOLS.contains(&protocol) {
         return Err(Error::UnsupportedProtocol {
             component,
             found: protocol,
-            required: REQUIRED_PROTOCOL,
+            supported: SUPPORTED_PROTOCOLS,
         });
     }
     Ok(())
@@ -984,7 +997,7 @@ impl SessionSnapshot {
         self.panes.iter().find(|pane| pane.pane_id == pane_id)
     }
 
-    /// Herdr protocol 17 does not put a cwd on `WorkspaceInfo`; the immutable
+    /// Herdr does not put a cwd on `WorkspaceInfo`; the immutable
     /// launch cwd lives on its panes (and, for worktrees, `checkout_path`).
     pub fn workspace_has_exact_launch_cwd(
         &self,
@@ -1775,7 +1788,7 @@ pub enum Error {
     UnsupportedProtocol {
         component: &'static str,
         found: u32,
-        required: u32,
+        supported: &'static [u32],
     },
     ProtocolMismatch {
         client: u32,
@@ -1913,10 +1926,11 @@ impl fmt::Display for Error {
             Error::UnsupportedProtocol {
                 component,
                 found,
-                required,
+                supported,
             } => write!(
                 f,
-                "{component} Herdr protocol {found} is unsupported; require protocol {required}"
+                "{component} Herdr protocol {found} is unsupported; require protocol {}",
+                describe_protocols(supported)
             ),
             Error::ProtocolMismatch { client, server } => write!(
                 f,
@@ -2106,6 +2120,41 @@ mod tests {
             Some(&None)
         );
         assert_eq!(invocation.env.get(OsStr::new(HERDR_SESSION)), Some(&None));
+    }
+
+    #[test]
+    fn probe_accepts_every_supported_protocol_and_rejects_unknown_ones() {
+        for protocol in SUPPORTED_PROTOCOLS {
+            let runner = FakeRunner::with_outputs([success(&format!(
+                r#"{{"client":{{"version":"0.8.0","protocol":{protocol}}},"server":{{"status":"running","running":true,"version":"0.8.0","protocol":{protocol},"compatible":true,"socket":"/tmp/h.sock"}}}}"#
+            ))]);
+            let herdr = Herdr::with_runner("herdr", Endpoint::Default, runner);
+            let probe = herdr.probe().unwrap();
+            assert_eq!(probe.client.protocol, *protocol);
+        }
+
+        let unsupported = SUPPORTED_PROTOCOLS.iter().max().unwrap() + 1;
+        let runner = FakeRunner::with_outputs([success(&format!(
+            r#"{{"client":{{"version":"0.9.0","protocol":{unsupported}}},"server":{{"status":"not_running","running":false,"socket":"/tmp/h.sock"}}}}"#
+        ))]);
+        let herdr = Herdr::with_runner("herdr", Endpoint::Default, runner);
+        assert!(matches!(
+            herdr.probe(),
+            Err(Error::UnsupportedProtocol { found, .. }) if found == unsupported
+        ));
+    }
+
+    #[test]
+    fn unsupported_protocol_error_lists_every_accepted_revision() {
+        let error = Error::UnsupportedProtocol {
+            component: "client",
+            found: 21,
+            supported: &[17, 19],
+        };
+        assert_eq!(
+            error.to_string(),
+            "client Herdr protocol 21 is unsupported; require protocol 17 or 19"
+        );
     }
 
     #[test]

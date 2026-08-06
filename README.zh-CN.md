@@ -35,7 +35,7 @@ bootmux start myproject
 - Unix-like 操作系统
 - 至少安装一个终端多路复用器：
   - tmux >= 2.6
-  - Herdr >= 0.7.5，并使用 socket protocol 17
+  - Herdr >= 0.7.5，并使用 socket protocol 17 或 19
   - zellij >= 0.44
 - 安装或构建 bootmux 需要 Rust 和 Cargo >= 1.89
 - 正常的项目和编辑器工作流需要设置 `$SHELL` 和 `$EDITOR`

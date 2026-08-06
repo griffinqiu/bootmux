@@ -11,7 +11,7 @@ bootmux needs at least one supported multiplexer:
 
 - a Unix-like operating system
 - tmux 2.6 or newer
-- Herdr 0.7.5 or newer, using socket protocol 17
+- Herdr 0.7.5 or newer, using socket protocol 17 or 19
 - zellij 0.44 or newer
 
 Installing bootmux requires Rust and Cargo 1.89 or newer. Install the latest

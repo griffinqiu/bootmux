@@ -4,6 +4,10 @@ All notable changes to bootmux are documented here.
 
 ## [Unreleased]
 
+- Accept Herdr socket protocol 19 (Herdr 0.8.0) alongside protocol 17. Herdr
+  0.8.0 kept every CLI shape and JSON field bootmux reads, so upgrading Herdr
+  no longer fails with `client Herdr protocol 19 is unsupported`.
+
 ## [0.1.2] - 2026-07-31
 
 - Add a native zellij backend requiring zellij 0.44 or newer. A project becomes

@@ -36,7 +36,7 @@ bootmux start myproject
 - A Unix-like operating system
 - At least one multiplexer:
   - tmux >= 2.6
-  - Herdr >= 0.7.5 using socket protocol 17
+  - Herdr >= 0.7.5 using socket protocol 17 or 19
   - zellij >= 0.44
 - Rust and Cargo >= 1.89 to install or build bootmux
 - `$SHELL` and `$EDITOR` for normal project and editor workflows

@@ -147,7 +147,11 @@ pub fn doctor_with_backend(env: &Env, backend: Backend) -> Result<()> {
             yes_no(command_installed("tmux"));
         }
         Backend::Herdr => {
-            print!("Checking if Herdr >= 0.7.5 (protocol 17) is installed ==> ");
+            print!(
+                "Checking if Herdr >= {} (protocol {}) is installed ==> ",
+                crate::herdr::MINIMUM_HERDR_VERSION,
+                crate::herdr::describe_protocols(crate::herdr::SUPPORTED_PROTOCOLS)
+            );
             yes_no(crate::herdr_backend::doctor_compatible(env));
         }
         Backend::Zellij => {

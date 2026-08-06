@@ -71,7 +71,7 @@ tmux，Herdr 的所有权检查更严格，zellij 仅凭会话名称识别项目
 
 - 类 Unix 操作系统
 - Rust 和 Cargo 1.89 或更新版本
-- tmux 2.6 或更新版本、Herdr 0.7.5/protocol 17，或两者都安装
+- tmux 2.6 或更新版本、Herdr 0.7.5/protocol 17 或 19，或两者都安装
 - `$SHELL` 和 `$EDITOR`
 - 可选的 `fzf`
 
@@ -1068,8 +1068,8 @@ herdr --version
 bootmux --backend herdr doctor
 ```
 
-请升级 Herdr 客户端/服务器组合，使两者都使用 protocol 17 并满足最低版本
-要求。
+请升级 Herdr 客户端/服务器组合，使两者都使用受支持的 protocol（17 或 19）
+并满足最低版本要求。
 
 ### Herdr stop 报告端点或身份不匹配
 

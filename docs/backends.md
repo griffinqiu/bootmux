@@ -156,13 +156,13 @@ does not aggregate those statuses. Verify the remaining tmux sessions after
 ## Herdr backend
 
 The Herdr backend requires a Unix-like platform, Herdr 0.7.5 or newer, and
-socket protocol exactly 17.
+socket protocol 17 or 19.
 
 Most operations use Herdr's
 [structured CLI](https://herdr.dev/docs/cli-reference/) and thread the returned
-workspace/tab/pane IDs through the plan. Herdr 0.7.5 does not expose arbitrary
-exact-pane focus in its CLI, so that one operation uses the protocol-17 local
-Unix socket directly.
+workspace/tab/pane IDs through the plan. Herdr does not expose arbitrary
+exact-pane focus in its CLI, so that one operation uses the local Unix socket
+directly.
 
 ### Endpoint selection
 

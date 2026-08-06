@@ -59,7 +59,11 @@ pub fn debug(env: &Env, params: &StartParams) -> Result<()> {
     println!("attach: {}", spec.attach);
     println!("append: {}", spec.append);
     println!("plan:");
-    println!("  - ensure compatible Herdr >= 0.7.5 / protocol 17 server");
+    println!(
+        "  - ensure compatible Herdr >= {} / protocol {} server",
+        crate::herdr::MINIMUM_HERDR_VERSION,
+        crate::herdr::describe_protocols(crate::herdr::SUPPORTED_PROTOCOLS)
+    );
     if spec.append {
         println!("  - require the active Herdr workspace and append tabs");
     } else {

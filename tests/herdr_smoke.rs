@@ -92,7 +92,7 @@ fn workspace_snapshot(cleanup: &Cleanup) -> Value {
 }
 
 #[test]
-#[ignore = "requires a local Herdr >= 0.7.5 (protocol 17)"]
+#[ignore = "requires a local Herdr >= 0.7.5 (protocol 17 or 19)"]
 fn creates_reuses_and_stops_a_real_herdr_workspace() {
     let herdr = match std::env::var_os("HERDR_BIN") {
         Some(path) => PathBuf::from(path),
