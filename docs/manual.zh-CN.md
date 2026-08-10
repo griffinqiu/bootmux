@@ -75,7 +75,34 @@ tmux，Herdr 的所有权检查更严格，zellij 仅凭会话名称识别项目
 - `$SHELL` 和 `$EDITOR`
 - 可选的 `fzf`
 
+### 安装预编译可执行文件
+
+每个带 tag 的 release 都附带 `aarch64-apple-darwin`、`x86_64-apple-darwin`、
+`aarch64-unknown-linux-musl` 和 `x86_64-unknown-linux-musl` 的预编译归档，
+以及 `SHA256SUMS` 校验清单。每个归档都包含 `bootmux` 可执行文件和 Bash、Zsh、
+Fish 补全脚本。这些安装方式都不需要 Rust 工具链。
+
+Homebrew 和 [mise 的 `ubi` 后端](https://mise.jdx.dev/dev-tools/backends/ubi.html)
+都使用这些归档：
+
+```sh
+brew install griffinqiu/tap/bootmux
+mise use -g ubi:griffinqiu/bootmux
+```
+
+如需手动安装，请从
+[releases 页面](https://github.com/griffinqiu/bootmux/releases)下载归档，
+用 `SHA256SUMS` 校验后把可执行文件放到 `PATH` 中：
+
+```sh
+shasum -a 256 --check --ignore-missing SHA256SUMS
+tar -xzf bootmux-aarch64-apple-darwin.tar.gz
+install -m 0755 bootmux /usr/local/bin/bootmux
+```
+
 ### 从 crates.io 安装
+
+从源码构建需要 Rust 和 Cargo >= 1.89。
 
 ```sh
 rustc --version
@@ -109,12 +136,16 @@ mise 默认会对 `latest` 这样的模糊版本请求应用 24 小时的最短�
 
 ### 使用 Homebrew 安装
 
-项目 tap 会从源码构建带 tag 的 release，并安装 Bash、Zsh 和 Fish 补全：
+项目 tap 会安装当前平台的预编译可执行文件，并附带 Bash、Zsh 和 Fish 补全。
+稳定版 Formula 不声明任何依赖，因此不会连带拉取编译工具链：
 
 ```sh
 brew install griffinqiu/tap/bootmux
 bootmux --version
 ```
+
+例外是 `brew install --HEAD griffinqiu/tap/bootmux`：它会从源码构建 `main`
+分支，因此依赖 `rust`。
 
 升级或卸载：
 

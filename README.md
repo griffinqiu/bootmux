@@ -38,11 +38,35 @@ bootmux start myproject
   - tmux >= 2.6
   - Herdr >= 0.7.5 using socket protocol 17 or 19
   - zellij >= 0.44
-- Rust and Cargo >= 1.89 to install or build bootmux
+- Rust and Cargo >= 1.89 only when installing from source; Homebrew and the
+  release archives ship prebuilt executables
 - `$SHELL` and `$EDITOR` for normal project and editor workflows
 - Optional: `fzf` for `bootmux picker`
 
 ## Installation
+
+With Homebrew, which downloads a prebuilt executable and needs no Rust
+toolchain:
+
+```sh
+brew install griffinqiu/tap/bootmux
+bootmux --version
+```
+
+With [mise's `ubi` backend](https://mise.jdx.dev/dev-tools/backends/ubi.html),
+which also downloads a prebuilt executable:
+
+```sh
+mise use -g ubi:griffinqiu/bootmux
+bootmux version
+```
+
+Prebuilt archives for macOS and Linux, on both Apple Silicon/ARM64 and x86-64,
+are attached to every [GitHub release](https://github.com/griffinqiu/bootmux/releases)
+together with a `SHA256SUMS` manifest. Each archive contains the `bootmux`
+executable and the three completion files.
+
+The remaining methods compile bootmux from source and therefore need Cargo.
 
 With Cargo:
 
@@ -64,13 +88,6 @@ The explicit version also works during mise's default 24-hour safety delay for
 newly published releases. After a release has aged past that delay,
 `mise use -g cargo:bootmux` selects the latest eligible version.
 
-With Homebrew:
-
-```sh
-brew install griffinqiu/tap/bootmux
-bootmux --version
-```
-
 Or build this checkout instead of the crates.io release:
 
 ```sh
@@ -78,10 +95,11 @@ cargo install --path . --locked
 bootmux version
 ```
 
-Cargo and mise install the executable only. Static Bash, Zsh, and Fish
-completion files are in [`completion/`](completion/); copy the
+Cargo and mise's Cargo backend install the executable only. Static Bash, Zsh,
+and Fish completion files are in [`completion/`](completion/); copy the
 matching-version file from the source tree into your shell's completion
-directory. The Homebrew formula installs all three completion files.
+directory. The Homebrew formula installs all three completion files, and the
+release archives ship them alongside the executable.
 
 After installation, check each backend you intend to use:
 

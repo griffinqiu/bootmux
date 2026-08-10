@@ -55,15 +55,21 @@ make release VERSION=0.2.0 PUBLISH=1
 3. 创建本地 release-preparation commit，再对干净且已经提交的包运行第二次
    Cargo 打包预检；
 4. 校验 release commit 和 tag，然后推送 `main` 与 `v<VERSION>`；
-5. 下载版本 tag 归档并计算 SHA-256，clone tap，在发布 crate 前生成并校验目标
-   Formula；
-6. 创建 **draft 状态**的 GitHub Release；
+5. 创建 **draft 状态**的 GitHub Release；
+6. 等待 `Release binaries` workflow 把预编译归档和 `SHA256SUMS` 附加到该
+   Release，下载全部归档并逐个与清单校验，然后 clone tap，在发布 crate 前生成
+   并校验目标 Formula；
 7. 发布到 crates.io，并下载 crate，通过 VCS 元数据确认它来自 release commit；
 8. 先更新并推送 `griffinqiu/homebrew-tap`，再更新主仓库内的 Formula 镜像；
 9. 只有前面全部成功，才公开 GitHub Release。
 
+第 4 步推送 tag 会触发 `.github/workflows/release.yml`，它构建
+`aarch64-apple-darwin`、`x86_64-apple-darwin`、`aarch64-unknown-linux-musl`
+和 `x86_64-unknown-linux-musl`，并把归档上传到第 5 步创建的 draft Release。
+因此第 6 步会阻塞等待 CI，可能需要几分钟；超过 30 分钟则放弃。
+
 mise 不是一个需要单独上传的发布源。它的 Cargo backend 会发现并安装 crates.io
-中已经发布的版本。
+中已经发布的版本，`ubi` backend 则读取 GitHub Release 上附加的归档。
 
 ## 非稳定版
 

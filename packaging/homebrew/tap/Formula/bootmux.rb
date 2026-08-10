@@ -1,15 +1,43 @@
 class Bootmux < Formula
   desc "Run tmuxinator-style YAML projects in tmux, Herdr, or zellij"
   homepage "https://github.com/griffinqiu/bootmux"
-  url "https://github.com/griffinqiu/bootmux/archive/refs/tags/v0.1.3.tar.gz"
-  sha256 "a96fd1d8446ae819a58e333bd1b29e90b85d11764be3cfa23cc7837d718239ab"
+  version "0.1.3"
   license "MIT"
-  head "https://github.com/griffinqiu/bootmux.git", branch: "main"
 
-  depends_on "rust" => :build
+  head do
+    url "https://github.com/griffinqiu/bootmux.git", branch: "main"
+
+    depends_on "rust" => :build
+  end
+
+  on_macos do
+    on_arm do
+      url "https://github.com/griffinqiu/bootmux/releases/download/v0.1.3/bootmux-aarch64-apple-darwin.tar.gz"
+      sha256 "0000000000000000000000000000000000000000000000000000000000000000"
+    end
+    on_intel do
+      url "https://github.com/griffinqiu/bootmux/releases/download/v0.1.3/bootmux-x86_64-apple-darwin.tar.gz"
+      sha256 "0000000000000000000000000000000000000000000000000000000000000000"
+    end
+  end
+
+  on_linux do
+    on_arm do
+      url "https://github.com/griffinqiu/bootmux/releases/download/v0.1.3/bootmux-aarch64-unknown-linux-musl.tar.gz"
+      sha256 "0000000000000000000000000000000000000000000000000000000000000000"
+    end
+    on_intel do
+      url "https://github.com/griffinqiu/bootmux/releases/download/v0.1.3/bootmux-x86_64-unknown-linux-musl.tar.gz"
+      sha256 "0000000000000000000000000000000000000000000000000000000000000000"
+    end
+  end
 
   def install
-    system "cargo", "install", *std_cargo_args
+    if build.head?
+      system "cargo", "install", *std_cargo_args
+    else
+      bin.install "bootmux"
+    end
 
     bash_completion.install "completion/bootmux.bash" => "bootmux"
     zsh_completion.install "completion/bootmux.zsh" => "_bootmux"

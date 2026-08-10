@@ -4,6 +4,18 @@ All notable changes to bootmux are documented here.
 
 ## [Unreleased]
 
+- Publish prebuilt executables with every tagged release, covering macOS and
+  Linux on both ARM64 and x86-64. Each archive carries the `bootmux` executable
+  and the Bash, Zsh, and Fish completion files, and a `SHA256SUMS` manifest is
+  attached alongside them.
+- The Homebrew formula now installs the prebuilt executable instead of
+  compiling the tagged release. Installing it previously pulled Homebrew's
+  `rust` and its `llvm` runtime dependency — roughly 1 GB of downloads to
+  produce a 4.5 MB executable. The stable formula now declares no dependencies
+  at all; `brew install --HEAD` still builds from source.
+- Document `mise use -g ubi:griffinqiu/bootmux`, which installs the same
+  prebuilt executable without a Rust toolchain.
+
 ## [0.1.3] - 2026-08-06
 
 - Accept Herdr socket protocol 19 (Herdr 0.8.0) alongside protocol 17. Herdr

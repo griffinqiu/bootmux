@@ -127,5 +127,12 @@ jobs:
           brew tap-new --no-git bootmux/ci
           tap_root="$(brew --repository bootmux/ci)"
           cp packaging/homebrew/tap/Formula/bootmux.rb "$tap_root/Formula/bootmux.rb"
-          brew install --build-from-source bootmux/ci/bootmux
+          brew install bootmux/ci/bootmux
           brew test bootmux/ci/bootmux
+
+          # The formula must ship a prebuilt executable, never a build toolchain.
+          if brew deps --include-build bootmux/ci/bootmux | grep -q .; then
+            echo "error: the stable formula must not declare dependencies" >&2
+            brew deps --include-build bootmux/ci/bootmux >&2
+            exit 1
+          fi

@@ -14,8 +14,26 @@ bootmux needs at least one supported multiplexer:
 - Herdr 0.7.5 or newer, using socket protocol 17 or 19
 - zellij 0.44 or newer
 
-Installing bootmux requires Rust and Cargo 1.89 or newer. Install the latest
-release from crates.io:
+The fastest install is Homebrew, which downloads a prebuilt executable and
+installs all three completion files:
+
+```sh
+brew install griffinqiu/tap/bootmux
+bootmux --version
+```
+
+mise's `ubi` backend downloads the same prebuilt executable:
+
+```sh
+mise use -g ubi:griffinqiu/bootmux
+bootmux version
+```
+
+Prebuilt archives for macOS and Linux, on both Apple Silicon/ARM64 and x86-64,
+are attached to every [GitHub release](https://github.com/griffinqiu/bootmux/releases)
+together with a `SHA256SUMS` manifest.
+
+Installing from source instead requires Rust and Cargo 1.89 or newer:
 
 ```sh
 rustc --version
@@ -31,7 +49,8 @@ cargo install --path . --locked
 bootmux version
 ```
 
-With mise, install Rust/Cargo and bootmux through the Cargo backend:
+To compile through mise instead, install Rust/Cargo and bootmux with the Cargo
+backend:
 
 ```sh
 mise use -g rust
@@ -42,13 +61,6 @@ bootmux version
 mise applies a 24-hour minimum release age to fuzzy versions by default. The
 explicit version works immediately; after that delay,
 `mise use -g cargo:bootmux` selects the latest eligible release.
-
-Homebrew builds the tagged release and installs all three completion files:
-
-```sh
-brew install griffinqiu/tap/bootmux
-bootmux --version
-```
 
 Set `$SHELL` and `$EDITOR`. Install `fzf` only if you want the interactive
 picker.

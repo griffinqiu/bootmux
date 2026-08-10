@@ -1,0 +1,139 @@
+name: Release binaries
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Existing release tag to build, for example v0.1.4"
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+env:
+  CARGO_TERM_COLOR: always
+  RELEASE_TAG: ${{ inputs.tag || github.ref_name }}
+
+jobs:
+  build:
+    name: Build ${{ matrix.target }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-14
+            target: aarch64-apple-darwin
+          - os: macos-14
+            target: x86_64-apple-darwin
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-musl
+          - os: ubuntu-24.04-arm
+            target: aarch64-unknown-linux-musl
+
+    steps:
+      - name: Validate the release tag
+        run: |
+          set -Eeuo pipefail
+          if [[ ! "$RELEASE_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then
+            echo "error: refusing to build an unexpected tag: $RELEASE_TAG" >&2
+            exit 1
+          fi
+
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ env.RELEASE_TAG }}
+
+      - name: Install Rust toolchain
+        run: |
+          rustup toolchain install stable --profile minimal
+          rustup override set stable
+          rustup target add "${{ matrix.target }}"
+
+      - name: Install musl toolchain
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes musl-tools
+
+      - name: Build the release executable
+        run: cargo build --release --locked --target "${{ matrix.target }}"
+
+      - name: Stage the release archive
+        id: stage
+        run: |
+          set -Eeuo pipefail
+          archive="bootmux-${{ matrix.target }}.tar.gz"
+          staging="$RUNNER_TEMP/staging"
+
+          mkdir -p "$staging/completion"
+          cp "target/${{ matrix.target }}/release/bootmux" "$staging/bootmux"
+          if [[ "$RUNNER_OS" == "macOS" ]]; then
+            strip -x "$staging/bootmux"
+          else
+            strip "$staging/bootmux"
+          fi
+          cp completion/bootmux.bash completion/bootmux.zsh completion/bootmux.fish \
+            "$staging/completion/"
+          cp LICENSE README.md "$staging/"
+
+          tar --create --gzip --file "$RUNNER_TEMP/$archive" -C "$staging" \
+            bootmux completion LICENSE README.md
+          printf 'archive=%s\n' "$archive" >> "$GITHUB_OUTPUT"
+
+      - name: Verify the staged executable
+        if: matrix.target == 'aarch64-apple-darwin' || matrix.target == 'x86_64-unknown-linux-musl'
+        run: |
+          "$RUNNER_TEMP/staging/bootmux" --version
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.stage.outputs.archive }}
+          path: ${{ runner.temp }}/${{ steps.stage.outputs.archive }}
+          if-no-files-found: error
+          retention-days: 1
+
+  publish:
+    name: Attach archives to the release
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: true
+
+      - name: Generate the checksum manifest
+        working-directory: artifacts
+        run: |
+          set -Eeuo pipefail
+          sha256sum bootmux-*.tar.gz | sort -k2 > SHA256SUMS
+          cat SHA256SUMS
+
+      - name: Wait for the release to exist
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -Eeuo pipefail
+          attempt=1
+          until gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; do
+            if (( attempt >= 60 )); then
+              echo "error: release $RELEASE_TAG was never created" >&2
+              exit 1
+            fi
+            attempt=$((attempt + 1))
+            sleep 10
+          done
+
+      - name: Upload the release archives
+        env:
+          GH_TOKEN: ${{ github.token }}
+        working-directory: artifacts
+        run: |
+          gh release upload "$RELEASE_TAG" \
+            --repo "$GITHUB_REPOSITORY" \
+            --clobber \
+            bootmux-*.tar.gz SHA256SUMS

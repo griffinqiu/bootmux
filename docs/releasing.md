@@ -63,17 +63,26 @@ The stable state machine is:
 3. create the local release-preparation commit, then verify the clean committed
    package with a second Cargo dry run;
 4. validate the release commit and tag, then push `main` and `v<VERSION>`;
-5. download the version tag archive, calculate its SHA-256, clone the tap, and
-   generate and validate the target Formula before publishing the crate;
-6. create a **draft** GitHub Release;
+5. create a **draft** GitHub Release;
+6. wait for the `Release binaries` workflow to attach the prebuilt archives and
+   `SHA256SUMS` to that Release, download every archive, verify each one
+   against the manifest, then clone the tap and generate and validate the
+   target Formula before publishing the crate;
 7. publish to crates.io and verify that the downloaded crate's VCS metadata
    points to the release commit;
 8. update and push `griffinqiu/homebrew-tap`, then update the Formula mirror
    in the main repository;
 9. publish the GitHub Release only after every preceding step succeeds.
 
+Pushing the tag in step 4 triggers `.github/workflows/release.yml`, which
+builds `aarch64-apple-darwin`, `x86_64-apple-darwin`,
+`aarch64-unknown-linux-musl`, and `x86_64-unknown-linux-musl`, then uploads the
+archives to the draft Release created in step 5. Step 6 therefore blocks on CI
+and can take several minutes; it gives up after 30 minutes.
+
 mise is not a separate upload destination. Its Cargo backend discovers and
-installs the version published to crates.io.
+installs the version published to crates.io, and its `ubi` backend reads the
+archives attached to the GitHub Release.
 
 ## Prereleases
 

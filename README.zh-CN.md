@@ -37,11 +37,33 @@ bootmux start myproject
   - tmux >= 2.6
   - Herdr >= 0.7.5，并使用 socket protocol 17 或 19
   - zellij >= 0.44
-- 安装或构建 bootmux 需要 Rust 和 Cargo >= 1.89
+- 只有从源码安装时才需要 Rust 和 Cargo >= 1.89；Homebrew 和 release 归档都提供
+  预编译可执行文件
 - 正常的项目和编辑器工作流需要设置 `$SHELL` 和 `$EDITOR`
 - 可选：`bootmux picker` 需要 `fzf`
 
 ## 安装
+
+使用 Homebrew，直接下载预编译可执行文件，不需要 Rust 工具链：
+
+```sh
+brew install griffinqiu/tap/bootmux
+bootmux --version
+```
+
+使用 [mise 的 `ubi` 后端](https://mise.jdx.dev/dev-tools/backends/ubi.html)，
+同样下载预编译可执行文件：
+
+```sh
+mise use -g ubi:griffinqiu/bootmux
+bootmux version
+```
+
+每个 [GitHub release](https://github.com/griffinqiu/bootmux/releases) 都附带
+macOS 与 Linux、Apple Silicon/ARM64 与 x86-64 的预编译归档，以及 `SHA256SUMS`
+校验清单。每个归档都包含 `bootmux` 可执行文件和三种补全脚本。
+
+其余安装方式会从源码编译，因此需要 Cargo。
 
 使用 Cargo：
 
@@ -62,13 +84,6 @@ bootmux version
 显式版本在 mise 针对新发布版本默认设置的 24 小时安全延迟期内也能正常安装。
 发布满 24 小时后，`mise use -g cargo:bootmux` 会选择最新的可用版本。
 
-使用 Homebrew：
-
-```sh
-brew install griffinqiu/tap/bootmux
-bootmux --version
-```
-
 也可以构建当前 checkout，而不是安装 crates.io 版本：
 
 ```sh
@@ -76,9 +91,10 @@ cargo install --path . --locked
 bootmux version
 ```
 
-Cargo 和 mise 只会安装可执行文件。静态 Bash、Zsh 和 Fish 补全脚本位于
-[`completion/`](completion/)；请从相同版本的源码中把对应文件复制到 shell
-的补全目录。Homebrew Formula 会自动安装这三种补全脚本。
+Cargo 和 mise 的 Cargo 后端只会安装可执行文件。静态 Bash、Zsh 和 Fish 补全脚本
+位于 [`completion/`](completion/)；请从相同版本的源码中把对应文件复制到 shell
+的补全目录。Homebrew Formula 会自动安装这三种补全脚本，release 归档也会随可执行
+文件一起提供。
 
 安装后，请检查准备使用的每个后端：
 

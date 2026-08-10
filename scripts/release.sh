@@ -13,6 +13,13 @@ tap_repo="${BOOTMUX_HOMEBREW_TAP_REPO:-griffinqiu/homebrew-tap}"
 tap_dir=""
 registry="crates-io"
 
+release_targets=(
+  aarch64-apple-darwin
+  x86_64-apple-darwin
+  aarch64-unknown-linux-musl
+  x86_64-unknown-linux-musl
+)
+
 release_files=(
   Cargo.toml
   Cargo.lock
@@ -39,11 +46,13 @@ temporary_style_dir=""
 temporary_formula_dir=""
 temporary_check_parent=""
 temporary_check_dir=""
+temporary_download_dir=""
 release_lock_dir=""
 release_lock_acquired=false
 local_formula_restore_needed=false
 prepared_formula=""
-prepared_formula_sha=""
+prepared_formula_checksums=""
+release_archive_checksums=""
 repo_root=""
 
 log() {
@@ -108,6 +117,10 @@ cleanup() {
 
   if [[ -n "$temporary_formula_dir" && -d "$temporary_formula_dir" ]]; then
     rm -rf "$temporary_formula_dir"
+  fi
+
+  if [[ -n "$temporary_download_dir" && -d "$temporary_download_dir" ]]; then
+    rm -rf "$temporary_download_dir"
   fi
 
   if [[ -n "$temporary_check_dir" && -n "$repo_root" ]]; then
@@ -648,34 +661,60 @@ verify_published_crate() {
     die "published crate $project_name $target came from $published_commit, expected $expected_commit"
 }
 
-formula_tag_version() {
-  sed -n \
-    's#^  url "https://github.com/.*/archive/refs/tags/v\([^"]*\)\.tar\.gz"$#\1#p' \
-    "$1" |
-    awk 'NR == 1 { print; exit }'
+formula_version() {
+  local formula="$1"
+  local value
+  value="$(
+    sed -n 's/^  version "\([^"]*\)"$/\1/p' "$formula" |
+      awk 'NR == 1 { print; exit }'
+  )"
+  if [[ -z "$value" ]]; then
+    value="$(
+      sed -n \
+        's#^  url "https://github.com/.*/archive/refs/tags/v\([^"]*\)\.tar\.gz"$#\1#p' \
+        "$formula" |
+        awk 'NR == 1 { print; exit }'
+    )"
+  fi
+  printf '%s\n' "$value"
 }
 
-formula_sha256() {
-  sed -n 's/^  sha256 "\([^"]*\)"$/\1/p' "$1" |
-    awk 'NR == 1 { print; exit }'
+formula_sha256_for_target() {
+  awk -v marker="/bootmux-$2.tar.gz\"" '
+    index($0, marker) > 0 {
+      pending = 1
+      next
+    }
+    pending && /^ *sha256 "/ {
+      sub(/^ *sha256 "/, "")
+      sub(/"$/, "")
+      print
+      exit
+    }
+  ' "$1"
 }
 
 validate_formula_update() {
   local formula="$1"
   local target="$2"
-  local expected_sha="$3"
+  local expected_checksums="$3"
   local current_formula_version
-  local current_formula_sha
-  current_formula_version="$(formula_tag_version "$formula")"
-  current_formula_sha="$(formula_sha256 "$formula")"
+  local expected_target
+  local expected_sha
+  local current_sha
+  current_formula_version="$(formula_version "$formula")"
 
-  [[ -n "$current_formula_version" && -n "$current_formula_sha" ]] ||
-    die "could not read the current version and SHA-256 from $formula"
+  [[ -n "$current_formula_version" ]] ||
+    die "could not read the current version from $formula"
   validate_version "$current_formula_version"
 
   if [[ "$current_formula_version" == "$target" ]]; then
-    [[ "$current_formula_sha" == "$expected_sha" ]] ||
-      die "$formula already uses $target with a different SHA-256"
+    while read -r expected_target expected_sha; do
+      [[ -n "$expected_target" ]] || continue
+      current_sha="$(formula_sha256_for_target "$formula" "$expected_target")"
+      [[ "$current_sha" == "$expected_sha" ]] ||
+        die "$formula already uses $target with a different SHA-256 for $expected_target"
+    done <<< "$expected_checksums"
     return
   fi
 
@@ -685,28 +724,64 @@ validate_formula_update() {
 
 update_formula() {
   local formula="$1"
-  local archive_url="$2"
-  local archive_sha="$3"
+  local target="$2"
+  local checksums="$3"
+  local encoded_checksums="${3//$'\n'/;}"
   local output
   output="$(mktemp "${TMPDIR:-/tmp}/bootmux-formula.XXXXXX")"
 
-  awk -v url="$archive_url" -v sha="$archive_sha" '
-    /^  url "/ {
-      print "  url \"" url "\""
-      found_url = 1
+  awk -v version="$target" -v repo="$github_repo" -v checksums="$encoded_checksums" '
+    BEGIN {
+      total = split(checksums, lines, ";")
+      for (entry = 1; entry <= total; entry++) {
+        if (lines[entry] == "") {
+          continue
+        }
+        split(lines[entry], fields, " ")
+        sha_by_target[fields[1]] = fields[2]
+        expected_targets[fields[1]] = 1
+      }
+    }
+    /^  version "/ {
+      print "  version \"" version "\""
+      updated_version = 1
       next
     }
-    /^  sha256 "/ {
-      print "  sha256 \"" sha "\""
-      found_sha = 1
+    /^ *url ".*\/bootmux-.*\.tar\.gz"$/ {
+      indent = $0
+      sub(/[^ ].*$/, "", indent)
+      archive_target = $0
+      sub(/^.*\/bootmux-/, "", archive_target)
+      sub(/\.tar\.gz"$/, "", archive_target)
+      if (!(archive_target in sha_by_target)) {
+        exit 43
+      }
+      print indent "url \"https://github.com/" repo "/releases/download/v" \
+        version "/bootmux-" archive_target ".tar.gz\""
+      updated_targets[archive_target] = 1
+      pending_target = archive_target
+      next
+    }
+    pending_target != "" && /^ *sha256 "/ {
+      indent = $0
+      sub(/[^ ].*$/, "", indent)
+      print indent "sha256 \"" sha_by_target[pending_target] "\""
+      updated_checksums[pending_target] = 1
+      pending_target = ""
       next
     }
     {
       print
     }
     END {
-      if (!found_url || !found_sha) {
-        exit 42
+      if (!updated_version) {
+        exit 44
+      }
+      for (archive_target in expected_targets) {
+        if (!(archive_target in updated_targets) ||
+          !(archive_target in updated_checksums)) {
+          exit 45
+        }
       }
     }
   ' "$formula" > "$output" || {
@@ -718,23 +793,103 @@ update_formula() {
   mv "$output" "$formula"
 }
 
+release_asset_names() {
+  gh release view "$1" --repo "$github_repo" --json assets --jq '.assets[].name'
+}
+
+wait_for_release_archives() {
+  local tag="$1"
+  local attempt=1
+  local asset_names=""
+  local archive_target
+  local missing
+  local announced=false
+
+  while true; do
+    missing=""
+    asset_names="$(release_asset_names "$tag" 2>/dev/null || true)"
+    for archive_target in "${release_targets[@]}"; do
+      grep -Fqx "bootmux-${archive_target}.tar.gz" <<< "$asset_names" ||
+        missing="$missing bootmux-${archive_target}.tar.gz"
+    done
+    grep -Fqx "SHA256SUMS" <<< "$asset_names" || missing="$missing SHA256SUMS"
+
+    if [[ -z "$missing" ]]; then
+      return 0
+    fi
+    if (( attempt >= 120 )); then
+      die "release $tag never received the prebuilt archives:$missing"
+    fi
+    if [[ "$announced" != "true" ]]; then
+      log "Waiting for GitHub Actions to attach the prebuilt archives to $tag"
+      announced=true
+    fi
+    attempt=$((attempt + 1))
+    sleep 15
+  done
+}
+
+compute_release_archive_checksums() {
+  local tag="$1"
+  local manifest
+  local archive
+  local archive_target
+  local declared_sha
+  local actual_sha
+  local collected=""
+
+  temporary_download_dir="$(mktemp -d "${TMPDIR:-/tmp}/bootmux-archives.XXXXXX")"
+  gh release download "$tag" \
+    --repo "$github_repo" \
+    --dir "$temporary_download_dir" \
+    --pattern "bootmux-*.tar.gz" \
+    --pattern "SHA256SUMS" \
+    --clobber
+
+  manifest="$temporary_download_dir/SHA256SUMS"
+  [[ -f "$manifest" ]] || die "release $tag has no SHA256SUMS manifest"
+
+  for archive_target in "${release_targets[@]}"; do
+    archive="$temporary_download_dir/bootmux-${archive_target}.tar.gz"
+    [[ -f "$archive" ]] ||
+      die "release $tag is missing the archive for $archive_target"
+
+    declared_sha="$(
+      awk -v name="bootmux-${archive_target}.tar.gz" '
+        $2 == name { print $1; exit }
+      ' "$manifest"
+    )"
+    [[ "$declared_sha" =~ ^[0-9a-f]{64}$ ]] ||
+      die "SHA256SUMS has no valid entry for $archive_target"
+
+    actual_sha="$(sha256_file "$archive")"
+    [[ "$actual_sha" == "$declared_sha" ]] ||
+      die "release archive for $archive_target does not match SHA256SUMS"
+
+    collected+="$archive_target $actual_sha"$'\n'
+  done
+
+  rm -rf "$temporary_download_dir"
+  temporary_download_dir=""
+  release_archive_checksums="$collected"
+}
+
 prepare_homebrew_formula() {
   local target="$1"
   local tag="v$target"
-  local archive_url="https://github.com/${github_repo}/archive/refs/tags/${tag}.tar.gz"
-  local archive
-  local archive_sha
+  local checksums
   local tap_origin
   local local_formula="packaging/homebrew/tap/Formula/bootmux.rb"
   local tap_formula
   local tap_readme
 
-  archive="$(mktemp "${TMPDIR:-/tmp}/bootmux-archive.XXXXXX")"
+  wait_for_release_archives "$tag"
 
-  log "Downloading the versioned GitHub tag archive"
-  curl --fail --location --retry 3 --silent --show-error "$archive_url" -o "$archive"
-  archive_sha="$(sha256_file "$archive")"
-  rm "$archive"
+  log "Verifying the prebuilt release archives"
+  compute_release_archive_checksums "$tag"
+  checksums="$release_archive_checksums"
+  [[ -n "$checksums" ]] ||
+    die "could not compute the release archive checksums for $tag"
 
   temporary_tap_dir="$(mktemp -d "${TMPDIR:-/tmp}/bootmux-tap.XXXXXX")"
   tap_dir="$temporary_tap_dir/repository"
@@ -760,15 +915,15 @@ prepare_homebrew_formula() {
   tap_readme="$tap_dir/README.md"
   [[ -f "$tap_formula" ]] || die "Homebrew formula not found: $tap_formula"
   [[ -f "$tap_readme" ]] || die "Homebrew tap README not found: $tap_readme"
-  validate_formula_update "$local_formula" "$target" "$archive_sha"
-  validate_formula_update "$tap_formula" "$target" "$archive_sha"
+  validate_formula_update "$local_formula" "$target" "$checksums"
+  validate_formula_update "$tap_formula" "$target" "$checksums"
 
   temporary_formula_dir="$(mktemp -d "${TMPDIR:-/tmp}/bootmux-formula-stage.XXXXXX")"
   mkdir "$temporary_formula_dir/Formula"
   prepared_formula="$temporary_formula_dir/Formula/bootmux.rb"
-  prepared_formula_sha="$archive_sha"
+  prepared_formula_checksums="$checksums"
   cp "$local_formula" "$prepared_formula"
-  update_formula "$prepared_formula" "$archive_url" "$archive_sha"
+  update_formula "$prepared_formula" "$target" "$checksums"
   ruby -c "$prepared_formula" >/dev/null
   run_formula_style "$prepared_formula"
 }
@@ -782,8 +937,8 @@ publish_homebrew_formula() {
 
   [[ -n "$prepared_formula" && -f "$prepared_formula" ]] ||
     die "the Homebrew Formula was not prepared before publication"
-  [[ -n "$prepared_formula_sha" ]] ||
-    die "the prepared Homebrew Formula has no archive SHA-256"
+  [[ -n "$prepared_formula_checksums" ]] ||
+    die "the prepared Homebrew Formula has no archive checksums"
   [[ -d "$tap_dir/.git" ]] || die "the prepared Homebrew tap checkout is missing"
 
   git -C "$tap_dir" fetch --quiet origin main
@@ -791,8 +946,8 @@ publish_homebrew_formula() {
     die "Homebrew tap changed after Formula preparation; rerun the release"
   [[ -z "$(git -C "$tap_dir" status --porcelain)" ]] ||
     die "Homebrew tap checkout changed after Formula preparation"
-  validate_formula_update "$local_formula" "$target" "$prepared_formula_sha"
-  validate_formula_update "$tap_formula" "$target" "$prepared_formula_sha"
+  validate_formula_update "$local_formula" "$target" "$prepared_formula_checksums"
+  validate_formula_update "$tap_formula" "$target" "$prepared_formula_checksums"
 
   local_formula_restore_needed=true
   cp "$prepared_formula" "$local_formula"
@@ -817,7 +972,7 @@ publish_homebrew_formula() {
   rm -rf "$temporary_formula_dir"
   temporary_formula_dir=""
   prepared_formula=""
-  prepared_formula_sha=""
+  prepared_formula_checksums=""
 }
 
 if [[ "${BOOTMUX_RELEASE_TEST_MODE:-0}" == "1" ]]; then
@@ -1012,11 +1167,6 @@ if [[ "$remote_tag_was_present" != "true" ]]; then
   git push origin "$tag"
 fi
 
-if [[ "$track" == "stable" ]]; then
-  log "Preparing and validating the Homebrew Formula before publishing the crate"
-  prepare_homebrew_formula "$target_version"
-fi
-
 expected_prerelease=false
 if [[ "$track" == "prerelease" ]]; then
   expected_prerelease=true
@@ -1043,6 +1193,11 @@ else
       --generate-notes \
       --draft
   fi
+fi
+
+if [[ "$track" == "stable" ]]; then
+  log "Preparing and validating the Homebrew Formula before publishing the crate"
+  prepare_homebrew_formula "$target_version"
 fi
 
 if [[ "$crate_already_published" == "true" ]]; then

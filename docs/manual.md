@@ -79,7 +79,35 @@ Requirements:
 - `$SHELL` and `$EDITOR`
 - optional `fzf`
 
+### Install a prebuilt executable
+
+Every tagged release carries prebuilt archives for `aarch64-apple-darwin`,
+`x86_64-apple-darwin`, `aarch64-unknown-linux-musl`, and
+`x86_64-unknown-linux-musl`, plus a `SHA256SUMS` manifest. Each archive holds
+the `bootmux` executable and the Bash, Zsh, and Fish completion files. None of
+these installs need a Rust toolchain.
+
+Homebrew and [mise's `ubi` backend](https://mise.jdx.dev/dev-tools/backends/ubi.html)
+both consume those archives:
+
+```sh
+brew install griffinqiu/tap/bootmux
+mise use -g ubi:griffinqiu/bootmux
+```
+
+To install one by hand, download it from the
+[releases page](https://github.com/griffinqiu/bootmux/releases), verify it
+against `SHA256SUMS`, and move the executable onto `PATH`:
+
+```sh
+shasum -a 256 --check --ignore-missing SHA256SUMS
+tar -xzf bootmux-aarch64-apple-darwin.tar.gz
+install -m 0755 bootmux /usr/local/bin/bootmux
+```
+
 ### Install from crates.io
+
+Building from source requires Rust and Cargo 1.89 or newer.
 
 ```sh
 rustc --version
@@ -115,13 +143,17 @@ instead of disabling the safety delay. Once the release is old enough,
 
 ### Install with Homebrew
 
-The project tap builds the tagged release from source and installs Bash, Zsh,
-and Fish completions:
+The project tap installs the prebuilt executable for the current platform along
+with Bash, Zsh, and Fish completions. The stable formula declares no
+dependencies, so it never pulls in a compiler toolchain:
 
 ```sh
 brew install griffinqiu/tap/bootmux
 bootmux --version
 ```
+
+`brew install --HEAD griffinqiu/tap/bootmux` is the exception: it builds `main`
+from source and therefore depends on `rust`.
 
 Upgrade or uninstall it with:
 
