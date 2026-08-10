@@ -4,6 +4,8 @@ All notable changes to bootmux are documented here.
 
 ## [Unreleased]
 
+## [0.1.4] - 2026-08-10
+
 - Publish prebuilt executables with every tagged release, covering macOS and
   Linux on both ARM64 and x86-64. Each archive carries the `bootmux` executable
   and the Bash, Zsh, and Fish completion files, and a `SHA256SUMS` manifest is

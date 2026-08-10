@@ -80,7 +80,7 @@ With [mise's Cargo backend](https://mise.jdx.dev/dev-tools/backends/cargo.html):
 
 ```sh
 mise use -g rust
-mise use -g cargo:bootmux@0.1.3
+mise use -g cargo:bootmux@0.1.4
 bootmux version
 ```
 
