@@ -21,7 +21,7 @@ use crate::project::{parse_settings, LoadOptions};
 use crate::settings::Backend;
 use crate::spec::ProjectSpec;
 use crate::util::{ask_yes, say_colored, Color};
-use crate::zellij::{PaneInfo, Zellij};
+use crate::zellij::{LayoutFile, PaneInfo, Zellij};
 use crate::zellij_layout;
 
 /// zellij derives its socket path from the session name, and paths longer than
@@ -134,6 +134,9 @@ pub fn start(env: &Env, params: &StartParams) -> Result<()> {
 
     run_hook(spec.hooks.first_start.as_deref(), &spec.root, env)
         .context("on_project_first_start hook failed")?;
+    // zellij's server reads the layout after its client has already exited, so
+    // the file stays on disk until the topology below has settled.
+    let layout = LayoutFile::new(&layout)?;
     client
         .create_background_session(&session, &layout)
         .with_context(|| format!("failed to create zellij session {session:?}"))?;
@@ -272,7 +275,7 @@ fn append_to_active<R: CommandRunner>(
     let mut created = Vec::new();
     let result = (|| -> Result<()> {
         for window_index in 0..spec.windows.len() {
-            let layout = zellij_layout::render_window(spec, window_index)?;
+            let layout = LayoutFile::new(&zellij_layout::render_window(spec, window_index)?)?;
             let window = &spec.windows[window_index];
             let tab = client.new_tab(session, window.name.as_deref(), &layout)?;
             created.push(tab);

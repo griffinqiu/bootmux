@@ -20,10 +20,11 @@ The GitHub and tap repositories can be overridden with
 `BOOTMUX_GITHUB_REPO` and `BOOTMUX_HOMEBREW_TAP_REPO`. The tap is always
 updated through a disposable clean clone.
 
-Before publishing, also run the real tmux and Herdr smoke tests described in
-[Development and verification](development.md). The automated gate runs the
-standard, non-ignored test suite; tests that start real interactive backends
-remain an explicit maintainer check.
+Before publishing, also run the real tmux, Herdr, and zellij runtime matrix
+suites described in [Development and verification](development.md), against the
+exact backend releases the release claims to support. The automated gate runs
+the standard, non-ignored test suite; the suites that start real interactive
+backends remain an explicit maintainer check.
 
 ## Stable releases
 

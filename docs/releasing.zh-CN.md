@@ -17,9 +17,9 @@
 可以用 `BOOTMUX_GITHUB_REPO` 和 `BOOTMUX_HOMEBREW_TAP_REPO` 覆盖默认的
 GitHub 与 tap 仓库。tap 始终通过一次性的干净 clone 更新。
 
-正式发布前，还应按照[开发与验证](development.md)运行真实 tmux 和 Herdr
-冒烟测试。自动门禁会运行标准的非 ignored 测试；会启动真实交互后端的测试仍
-需要维护者显式执行。
+正式发布前，还应按照[开发与验证](development.md)，针对本次发布声称支持的精确
+后端版本，运行真实 tmux、Herdr 与 zellij 的运行时矩阵套件。自动门禁只运行标准
+的非 ignored 测试；会启动真实交互后端的测试仍需要维护者显式执行。
 
 ## 稳定版
 

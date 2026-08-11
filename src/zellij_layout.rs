@@ -26,7 +26,7 @@ pub fn render_project(spec: &ProjectSpec) -> Result<String> {
 }
 
 /// Renders a single window as its own document, used by `--append` through
-/// `zellij action new-tab --layout-string`.
+/// `zellij action new-tab --layout`.
 pub fn render_window(spec: &ProjectSpec, window_index: usize) -> Result<String> {
     render_tabs(spec, window_index..window_index + 1)
 }

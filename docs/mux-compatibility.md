@@ -180,22 +180,19 @@ The compatibility suite proves:
 
 It does not execute all 19 fixtures against real tmux, Herdr, or zellij.
 
-Separate ignored smoke tests exercise representative real lifecycles:
+Separate ignored smoke suites prove one required runtime matrix per backend
+against the exact executable under test. Every suite covers topology creation,
+roots and command order, startup focus, the documented hook order, reuse,
+`list --active`, append, explicit stop, `stop-all`, and a failed creation that
+leaves nothing behind, plus backend-specific rows: the generated CLI and socket
+isolation for tmux, the client/server protocol pair, `status --json` and
+direct-socket pane focus for Herdr, and KDL loading, `list-panes --json`, append
+rollback and dead-session filtering for zellij.
 
-- tmux: repeated start/reuse, a startup window containing a quote, two-pane
-  creation, stopping after the root disappears, and fail-fast start on a
-  missing root;
-- Herdr: concurrent/repeated start reuse, two tabs/four panes with real command
-  output, append, wrong-endpoint and wrong-identity stop rejection, a rendered
-  stop hook, and config-independent `stop-all` for newly written state;
-- zellij: start/reuse, two tabs/three panes with real command output and
-  ordering, `list --active`, a rendered stop hook, and a rejected project
-  leaving no session behind.
-
-These smoke tests do not claim end-to-end coverage of every fixture, custom
-layout, every socket selector mode or named Herdr sessions, attach paths, hook
-failures, or rollback branches. See
-[Development and verification](development.md) for exact commands.
+These suites still do not claim end-to-end coverage of every fixture, custom
+layout, every socket selector mode or named Herdr sessions, attach paths, or
+hook failures. See [Development and verification](development.md) for exact
+commands.
 
 ## Recommended migration process
 

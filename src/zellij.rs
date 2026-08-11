@@ -8,7 +8,10 @@
 
 use std::ffi::{OsStr, OsString};
 use std::fmt;
+use std::fs::OpenOptions;
+use std::io::Write;
 use std::path::{Path, PathBuf};
+use std::time::{SystemTime, UNIX_EPOCH};
 
 use serde::de::DeserializeOwned;
 use serde::Deserialize;
@@ -28,6 +31,51 @@ const NO_SESSIONS_MARKER: &str = "No active zellij sessions";
 /// They remain listed, so "the session exists" is not the same as "the session
 /// is running".
 const EXITED_MARKER: &str = "(EXITED";
+
+/// A rendered layout, handed to zellij as a file.
+///
+/// Inline layouts (`--layout-string`) only exist from zellij 0.44.1 onwards,
+/// while `--layout` has accepted a path for the whole supported range, so the
+/// file keeps the advertised minimum honest.
+///
+/// zellij's server reads the file after the client has already returned, so the
+/// caller must keep this alive until the topology it describes has settled.
+pub struct LayoutFile {
+    path: PathBuf,
+}
+
+impl LayoutFile {
+    pub fn path(&self) -> &Path {
+        &self.path
+    }
+
+    pub fn new(layout: &str) -> Result<Self> {
+        let unique = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map(|elapsed| elapsed.as_nanos())
+            .unwrap_or_default();
+        let path = std::env::temp_dir().join(format!(
+            "bootmux-layout-{}-{unique}.kdl",
+            std::process::id()
+        ));
+        OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&path)
+            .and_then(|mut file| file.write_all(layout.as_bytes()))
+            .map_err(|source| Error::LayoutFile {
+                path: path.display().to_string(),
+                source,
+            })?;
+        Ok(Self { path })
+    }
+}
+
+impl Drop for LayoutFile {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_file(&self.path);
+    }
+}
 
 pub type Result<T> = std::result::Result<T, Error>;
 
@@ -49,6 +97,10 @@ pub enum Error {
     UnexpectedOutput {
         invocation: String,
         detail: String,
+    },
+    LayoutFile {
+        path: String,
+        source: std::io::Error,
     },
     UnparsableVersion {
         found: String,
@@ -85,6 +137,12 @@ impl fmt::Display for Error {
             }
             Self::UnexpectedOutput { invocation, detail } => {
                 write!(formatter, "`{invocation}` returned {detail}")
+            }
+            Self::LayoutFile { path, source } => {
+                write!(
+                    formatter,
+                    "could not write the zellij layout {path:?}: {source}"
+                )
             }
             Self::UnparsableVersion { found } => {
                 write!(formatter, "could not read a zellij version from {found:?}")
@@ -282,16 +340,14 @@ impl<R: CommandRunner> Zellij<R> {
         Ok(self.sessions()?.iter().any(|session| session == name))
     }
 
-    /// Creates a detached session from an inline KDL layout.
+    /// Creates a detached session from a rendered KDL layout.
     ///
-    /// The layout is passed as a string rather than written to a temporary
-    /// file, which keeps session creation a single call with nothing to clean
-    /// up. zellij treats this as idempotent: creating a session that already
+    /// zellij treats this as idempotent: creating a session that already
     /// exists reports "Session already exists" and succeeds.
-    pub fn create_background_session(&self, name: &str, layout: &str) -> Result<()> {
+    pub fn create_background_session(&self, name: &str, layout: &LayoutFile) -> Result<()> {
         self.run_discarding_output(self.invocation([
-            OsStr::new("--layout-string"),
-            OsStr::new(layout),
+            OsStr::new("--layout"),
+            layout.path().as_os_str(),
             OsStr::new("attach"),
             OsStr::new("--create-background"),
             OsStr::new(name),
@@ -315,14 +371,14 @@ impl<R: CommandRunner> Zellij<R> {
     /// `layout` must be a complete `layout { tab { … } }` document written
     /// across multiple lines; zellij rejects a bare tab body and rejects
     /// semicolon-separated nodes on one line.
-    pub fn new_tab(&self, session: &str, name: Option<&str>, layout: &str) -> Result<u32> {
+    pub fn new_tab(&self, session: &str, name: Option<&str>, layout: &LayoutFile) -> Result<u32> {
         let mut args = vec![OsString::from("new-tab")];
         if let Some(name) = name {
             args.push(OsString::from("--name"));
             args.push(OsString::from(name));
         }
-        args.push(OsString::from("--layout-string"));
-        args.push(OsString::from(layout));
+        args.push(OsString::from("--layout"));
+        args.push(OsString::from(layout.path().as_os_str()));
 
         let invocation = self.action_invocation(session, args);
         let stdout = self.capture(&invocation)?;
@@ -676,6 +732,24 @@ mod tests {
     }
 
     #[test]
+    fn a_layout_file_carries_the_rendered_document_and_is_removed_afterwards() {
+        let layout = "layout {\n    tab name=\"editor\"\n}\n";
+        let path = {
+            let file = LayoutFile::new(layout).unwrap();
+            assert_eq!(
+                file.path.extension().and_then(std::ffi::OsStr::to_str),
+                Some("kdl")
+            );
+            assert_eq!(std::fs::read_to_string(&file.path).unwrap(), layout);
+            file.path.clone()
+        };
+        assert!(
+            !path.exists(),
+            "the temporary layout must not be left behind"
+        );
+    }
+
+    #[test]
     fn topology_commands_pin_the_session_and_use_documented_cli_shapes() {
         let runner = FakeRunner::with(vec![
             ok(""),
@@ -689,12 +763,9 @@ mod tests {
         ]);
         let client = Zellij::with_runner("zellij", runner);
 
-        client
-            .create_background_session("api", "layout {\n    tab\n}\n")
-            .unwrap();
-        let tab = client
-            .new_tab("api", Some("editor"), "layout {\n    tab\n}\n")
-            .unwrap();
+        let layout = LayoutFile::new("layout {\n    tab\n}\n").unwrap();
+        client.create_background_session("api", &layout).unwrap();
+        let tab = client.new_tab("api", Some("editor"), &layout).unwrap();
         assert_eq!(tab, 2);
         client.rename_pane("api", "terminal_3", "vim").unwrap();
         client
@@ -705,28 +776,22 @@ mod tests {
         client.close_tab("api", 2).unwrap();
 
         let runner = client.runner_for_test();
-        assert_eq!(
-            runner.args(0),
-            vec![
-                "--layout-string",
-                "layout {\n    tab\n}\n",
-                "attach",
-                "--create-background",
-                "api",
-            ]
+        let created = runner.args(0);
+        assert_eq!(created[0], "--layout");
+        assert!(
+            created[1].ends_with(".kdl"),
+            "the layout must be handed over as a file: {created:?}"
         );
+        assert_eq!(created[2..], ["attach", "--create-background", "api"]);
+        let appended = runner.args(1);
         assert_eq!(
-            runner.args(1),
-            vec![
-                "--session",
-                "api",
-                "action",
-                "new-tab",
-                "--name",
-                "editor",
-                "--layout-string",
-                "layout {\n    tab\n}\n",
-            ]
+            appended[..6],
+            ["--session", "api", "action", "new-tab", "--name", "editor"]
+        );
+        assert_eq!(appended[6], "--layout");
+        assert!(
+            appended[7].ends_with(".kdl"),
+            "the appended layout must be handed over as a file: {appended:?}"
         );
         assert_eq!(
             runner.args(2),
@@ -783,7 +848,8 @@ mod tests {
     #[test]
     fn a_new_tab_that_does_not_report_an_id_is_an_error() {
         let client = Zellij::with_runner("zellij", FakeRunner::with(vec![ok("Session not found")]));
-        let error = client.new_tab("api", None, "layout {}").unwrap_err();
+        let layout = LayoutFile::new("layout {}").unwrap();
+        let error = client.new_tab("api", None, &layout).unwrap_err();
         assert!(error.to_string().contains("instead of a tab id"), "{error}");
     }
 

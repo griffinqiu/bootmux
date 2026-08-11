@@ -4,6 +4,18 @@ All notable changes to bootmux are documented here.
 
 ## [Unreleased]
 
+- zellij: hand rendered layouts to zellij as a file instead of an inline
+  `--layout-string`. zellij only gained inline layouts in 0.44.1, so starting or
+  appending a project failed outright on zellij 0.44.0 even though bootmux
+  advertises it as the supported minimum. Users on zellij 0.44.0 no longer need
+  to upgrade; users on 0.44.1 or newer see no change.
+- tmux 3.7b, Herdr 0.8.0, and zellij 0.44.3 are each covered by a required
+  real-runtime matrix: the ignored smoke suites now prove topology creation,
+  roots and command order, startup focus, the documented hook order, reuse,
+  `list --active`, append, explicit stop, `stop-all`, and failure rollback,
+  plus backend-specific rows, and print a machine-readable marker per row. No
+  user action is required.
+
 ## [0.1.4] - 2026-08-10
 
 - Publish prebuilt executables with every tagged release, covering macOS and

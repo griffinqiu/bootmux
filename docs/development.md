@@ -92,82 +92,67 @@ This is a parse/render/preflight matrix, not 19 real lifecycle tests.
 See [mux compatibility](mux-compatibility.md) for the complete table and
 fixture attribution.
 
-## Real tmux smoke test
+## Real backend runtime matrix
+
+Each backend has one ignored smoke suite that must prove every row of the
+required runtime matrix against the exact executable under test. A row only
+counts once its assertions and cleanup succeeded, at which point the test prints
+`BOOTMUX_MATRIX <backend> <row> PASS`. The suites fail instead of skipping when
+their backend is missing, so a green result is real evidence.
+
+The shared rows are executable identity, topology creation, roots and command
+order, startup focus, lifecycle hooks, reuse, `list --active`, append, explicit
+stop, `stop-all`, and a failed creation that leaves nothing behind.
+
+Run each suite sequentially, with the exact executable first on `PATH`:
 
 ```sh
 tmux -V
-cargo test --test smoke -- --ignored
-```
+cargo test --test smoke -- --ignored --nocapture --test-threads=1
 
-The test uses the isolated tmux socket name `bootmux-smoke` and kills that
-server before and after the test. Do not reuse that socket for personal work
-while the test is running.
-
-It verifies:
-
-- repeated start reuses one session;
-- a startup window containing a quote is selected correctly;
-- a two-pane window is created;
-- stop still closes the session after its root directory is deleted;
-- a missing initial root fails start without leaving a session.
-
-It does not cover every hook, append, custom command, socket, or stop-all path.
-
-## Real Herdr smoke test
-
-```sh
 herdr --version
-cargo test --test herdr_smoke -- --ignored
-```
+cargo test --test herdr_smoke -- --ignored --nocapture --test-threads=1
 
-Set `HERDR_BIN=/absolute/path/to/herdr` to choose another Herdr binary.
-
-The test uses a temporary socket, Herdr config, HOME, and XDG directories. It
-starts and stops its own temporary Herdr server and verifies:
-
-- concurrent and repeated start reuse one workspace;
-- two tabs/four panes exist and real pane command output appears;
-- append produces four tabs/eight panes;
-- wrong socket and wrong rendered identity are rejected on stop;
-- correct stop runs the rendered hook;
-- after a new managed record is written, deleting the config still allows
-  `stop-all` to use the snapshotted hook.
-
-If Herdr is not installed, this test prints a skip message and returns success.
-A green test result alone is therefore not evidence that the real Herdr path
-ran; confirm `herdr --version` and inspect the test output.
-
-The smoke does not cover client attachment, detached focus restoration, named
-sessions, stale-ID adoption, custom serialized layouts, or rollback failures.
-
-## Real zellij smoke test
-
-```sh
 zellij --version
-cargo test --test zellij_smoke -- --ignored
+cargo test --test zellij_smoke -- --ignored --nocapture --test-threads=1
 ```
 
-Set `ZELLIJ_BIN=/absolute/path/to/zellij` to choose another zellij binary.
+Set `BOOTMUX_MATRIX_EXPECT_TMUX`, `BOOTMUX_MATRIX_EXPECT_HERDR`, or
+`BOOTMUX_MATRIX_EXPECT_ZELLIJ` to the expected `--version` output to assert that
+the suite really ran against the intended release, for example
+`BOOTMUX_MATRIX_EXPECT_TMUX="tmux 3.7b"`.
 
-The test uses a temporary HOME, `ZELLIJ_CONFIG_DIR`, XDG directories, and
-project directory, and clears the inherited `ZELLIJ*` variables so it cannot be
-mistaken for running inside a session. It creates and kills its own uniquely
-named background session and verifies:
+### tmux
 
-- a two-tab, three-pane topology is built from the rendered layout;
-- `pre_window` runs in every pane and a pane's own commands run in order;
-- a repeated start reuses the session without rerunning pane commands or
-  adding panes;
-- `list --active` reports the project;
-- `stop` runs the stop hook and closes the session;
-- a project whose layout cannot hold its panes fails without leaving a session.
+The suite isolates itself with a temporary `TMUX_TMPDIR`, HOME, and project
+directory, so it never touches a personal server. On top of the shared rows it
+asserts the generated CLI script, the running server's `#{version}`, and that a
+project selecting its own `tmux -L` socket stays invisible on the default one.
 
-If zellij is not installed, this test prints a skip message and returns success.
-A green test result alone is therefore not evidence that the real zellij path
-ran; confirm `zellij --version` and inspect the test output.
+### Herdr
 
-The smoke does not cover client attachment, `switch-session`, `--append`,
-`stop-all`, or rollback failures.
+Set `HERDR_BIN=/absolute/path/to/herdr` to choose another Herdr binary. The
+suite uses a temporary socket, Herdr config, HOME, and XDG directories, and
+starts and stops its own server. On top of the shared rows it asserts the
+client/server protocol pair against `SUPPORTED_PROTOCOLS`, the `status --json`
+shape, direct-socket pane focus, concurrent starts converging on one workspace,
+and that a stop which cannot prove the managed identity is refused without
+touching the workspace or its ownership record.
+
+It does not cover client attachment, named sessions, stale-ID adoption, or
+rollback failures.
+
+### zellij
+
+Set `ZELLIJ_BIN=/absolute/path/to/zellij` to choose another zellij binary. The
+suite uses a temporary HOME, `ZELLIJ_CONFIG_DIR`, and XDG directories, clears
+the inherited `ZELLIJ*` variables, and shortens `serialization_interval` so a
+stopped session becomes resurrectable within the test. On top of the shared rows
+it asserts that zellij loaded the rendered KDL, the `action list-panes --json`
+shape, that a failed append closes the tabs it created, and that a session
+zellij still lists as `(EXITED` is not reported as active.
+
+It does not cover client attachment or `switch-session`.
 
 ## Documentation checks
 
@@ -189,7 +174,7 @@ The vendored files are third-party test data. When updating them:
 3. update `tests/fixtures/mux/README.md` attribution;
 4. update the exhaustive `CASES` list and expected backend errors;
 5. update the compatibility matrix documentation;
-6. run the full quality gates and both real smoke tests where available.
+6. run the full quality gates and all three real smoke tests where available.
 
 Do not rewrite an upstream fixture merely to make a backend accept it. Model an
 expected safety rejection explicitly or add a separate bootmux-owned fixture.
