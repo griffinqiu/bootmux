@@ -37,6 +37,8 @@ bootmux start myproject
   - tmux >= 2.6
   - Herdr >= 0.7.5，并使用 socket protocol 17 或 19
   - zellij >= 0.44
+- bootmux 已验证的最新版本记录在 [`mux-support.json`](mux-support.json)；
+  上述版本仍是最低兼容要求。
 - 只有从源码安装时才需要 Rust 和 Cargo >= 1.89；Homebrew 和 release 归档都提供
   预编译可执行文件
 - 正常的项目和编辑器工作流需要设置 `$SHELL` 和 `$EDITOR`

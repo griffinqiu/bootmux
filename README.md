@@ -38,6 +38,9 @@ bootmux start myproject
   - tmux >= 2.6
   - Herdr >= 0.7.5 using socket protocol 17 or 19
   - zellij >= 0.44
+- The latest releases verified by bootmux are recorded in
+  [`mux-support.json`](mux-support.json); the versions above remain the minimum
+  compatibility contract.
 - Rust and Cargo >= 1.89 only when installing from source; Homebrew and the
   release archives ship prebuilt executables
 - `$SHELL` and `$EDITOR` for normal project and editor workflows

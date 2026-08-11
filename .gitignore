@@ -1,1 +1,6 @@
 /target
+
+# Local agent configuration and project-only skills are intentionally not
+# committed. Both Claude Code and Codex discover them from this checkout.
+/.claude/
+/.agents/

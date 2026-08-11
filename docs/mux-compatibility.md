@@ -6,6 +6,12 @@ reference. Compatibility means the supported project is parsed and translated
 with documented backend semantics; it does not mean tmux, Herdr, and zellij
 produce identical runtime behavior.
 
+The machine-readable latest tmux, Herdr, and zellij releases proven compatible
+with a published bootmux version are stored in
+[`mux-support.json`](../mux-support.json). That project-level file advances only
+after the exact upstream release passes the required real-runtime matrix and
+any necessary bootmux change has been released.
+
 ## Reference revision
 
 The mux fixtures are vendored verbatim from commit
