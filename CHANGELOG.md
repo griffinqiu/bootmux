@@ -4,6 +4,8 @@ All notable changes to bootmux are documented here.
 
 ## [Unreleased]
 
+## [0.1.5] - 2026-08-11
+
 - zellij: hand rendered layouts to zellij as a file instead of an inline
   `--layout-string`. zellij only gained inline layouts in 0.44.1, so starting or
   appending a project failed outright on zellij 0.44.0 even though bootmux

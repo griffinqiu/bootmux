@@ -1,6 +1,6 @@
 [package]
 name = "bootmux"
-version = "0.1.4"
+version = "0.1.5"
 edition = "2021"
 rust-version = "1.89"
 description = "Run tmuxinator-style YAML projects in tmux, Herdr, or zellij"

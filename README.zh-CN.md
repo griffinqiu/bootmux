@@ -79,7 +79,7 @@ bootmux version
 
 ```sh
 mise use -g rust
-mise use -g cargo:bootmux@0.1.4
+mise use -g cargo:bootmux@0.1.5
 bootmux version
 ```
 
