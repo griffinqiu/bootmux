@@ -1,13 +1,13 @@
 {
   "backends": {
     "herdr": {
-      "bootmux_commit": "f8501d85535852fc3d1cf1bdbbd31d0a3558e83c",
-      "bootmux_version": "0.1.4",
-      "contract_fingerprint": "sha256:5c3a0941932be1e683b3632aed9629056d6d5016b715031ba26f8ec3098c0185",
-      "evidence": "user-confirmed-support",
+      "bootmux_commit": "81f0224183095ff24f4d50a0ec35ad0285896998",
+      "bootmux_version": "0.1.5",
+      "contract_fingerprint": "sha256:cebc618afe8e78f1f20cb4cb64a888c9c1ebf5265e0e6cf468469d0a34034a6b",
+      "evidence": "exact-stable-smoke",
       "matrix_fingerprint": "sha256:ad3e393ac6dd6c82f32355067294e70aa157d638591334abb83f1d69a6b02e28",
       "research_after": "0.8.0",
-      "research_evidence": "user-confirmed-support",
+      "research_evidence": "exact-stable-smoke",
       "research_notes_sha256": "sha256:e154bf8c1efac3e2c809feb13f0859c29a765121480947dc3791863504134e08",
       "research_published_at": "2026-08-03T19:00:03Z",
       "research_source_url": "https://github.com/herdrdev/herdr/releases/tag/v0.8.0",
@@ -19,16 +19,16 @@
       ],
       "supported_through": "0.8.0",
       "upstream_release_url": "https://github.com/herdrdev/herdr/releases/tag/v0.8.0",
-      "verified_on": "2026-08-10"
+      "verified_on": "2026-08-11"
     },
     "tmux": {
-      "bootmux_commit": "f8501d85535852fc3d1cf1bdbbd31d0a3558e83c",
-      "bootmux_version": "0.1.4",
-      "contract_fingerprint": "sha256:5c3a0941932be1e683b3632aed9629056d6d5016b715031ba26f8ec3098c0185",
-      "evidence": "user-confirmed-support",
+      "bootmux_commit": "81f0224183095ff24f4d50a0ec35ad0285896998",
+      "bootmux_version": "0.1.5",
+      "contract_fingerprint": "sha256:cebc618afe8e78f1f20cb4cb64a888c9c1ebf5265e0e6cf468469d0a34034a6b",
+      "evidence": "exact-stable-smoke",
       "matrix_fingerprint": "sha256:ad3e393ac6dd6c82f32355067294e70aa157d638591334abb83f1d69a6b02e28",
       "research_after": "3.7b",
-      "research_evidence": "user-confirmed-support",
+      "research_evidence": "exact-stable-smoke",
       "research_notes_sha256": "sha256:b97838356767a7d6ddadf26ac4021e6216bbad5fc417f556c233b5afcb92960b",
       "research_published_at": "2026-07-01T18:58:22Z",
       "research_source_url": "https://github.com/tmux/tmux/releases/tag/3.7b",
@@ -37,25 +37,25 @@
       "supported_protocols": null,
       "supported_through": "3.7b",
       "upstream_release_url": "https://github.com/tmux/tmux/releases/tag/3.7b",
-      "verified_on": "2026-08-10"
+      "verified_on": "2026-08-11"
     },
     "zellij": {
-      "bootmux_commit": "f8501d85535852fc3d1cf1bdbbd31d0a3558e83c",
-      "bootmux_version": "0.1.4",
-      "contract_fingerprint": "sha256:5c3a0941932be1e683b3632aed9629056d6d5016b715031ba26f8ec3098c0185",
-      "evidence": "unknown",
+      "bootmux_commit": "81f0224183095ff24f4d50a0ec35ad0285896998",
+      "bootmux_version": "0.1.5",
+      "contract_fingerprint": "sha256:cebc618afe8e78f1f20cb4cb64a888c9c1ebf5265e0e6cf468469d0a34034a6b",
+      "evidence": "exact-stable-smoke",
       "matrix_fingerprint": "sha256:ad3e393ac6dd6c82f32355067294e70aa157d638591334abb83f1d69a6b02e28",
-      "research_after": "0.44.0",
-      "research_evidence": "bootmux-introduction-baseline",
-      "research_notes_sha256": "sha256:4e2f2bd00a33a56f00d4bed14cb79ada7c3ce7983d610c675231ee7d41773e07",
-      "research_published_at": "2026-03-23T08:03:41Z",
-      "research_source_url": "https://github.com/zellij-org/zellij/releases/tag/v0.44.0",
-      "research_tag_commit_id": "e7fbd985cbbf52cc569ec2c0250b51f0c67c2eff",
-      "research_tag_object_id": "055cf34b851647fe36c83093aa1fbe2a5edd7df0",
+      "research_after": "0.44.3",
+      "research_evidence": "exact-stable-smoke",
+      "research_notes_sha256": "sha256:e2344c9776ea94b1a6282953a6020475ef49dfb33d9154d594509d2933bcbf27",
+      "research_published_at": "2026-05-13T07:49:54Z",
+      "research_source_url": "https://github.com/zellij-org/zellij/releases/tag/v0.44.3",
+      "research_tag_commit_id": "55a2121b73dce4be624cda425a960e893000777c",
+      "research_tag_object_id": "90127dcb99ae52575641366eb10bef1edf4d72a9",
       "supported_protocols": null,
-      "supported_through": null,
-      "upstream_release_url": null,
-      "verified_on": null
+      "supported_through": "0.44.3",
+      "upstream_release_url": "https://github.com/zellij-org/zellij/releases/tag/v0.44.3",
+      "verified_on": "2026-08-11"
     }
   },
   "schema_version": 4
