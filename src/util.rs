@@ -60,6 +60,13 @@ pub fn say_colored(msg: &str, color: Color) {
     }
 }
 
+// tmux hands the terminal over on start, so its result is self-evident. Herdr
+// and zellij settle outside the calling terminal, which leaves the CLI as the
+// only channel that can tell the user what happened.
+pub fn report_outcome(message: &str) {
+    println!("bootmux: {message}");
+}
+
 pub fn yes_no(condition: bool) {
     if condition {
         say_colored("Yes", Color::Green);

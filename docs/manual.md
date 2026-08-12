@@ -402,6 +402,18 @@ bootmux --backend herdr list --active
 bootmux --backend herdr stop myapp
 ```
 
+The Herdr and zellij backends settle outside the terminal that ran the command,
+so a successful `start`, `local`, or `stop` prints one line saying whether it
+created, reused, appended to, or stopped which workspace or session:
+
+```text
+bootmux: created herdr workspace "myapp" (socket:/Users/me/.config/herdr/herdr.sock)
+bootmux: reused zellij session "myapp"
+```
+
+The tmux backend does not print this line, because a tmux start hands the
+terminal over and the result is already visible.
+
 ### Project shorthand
 
 If a project name is discoverable, this:

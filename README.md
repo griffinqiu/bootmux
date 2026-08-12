@@ -152,6 +152,18 @@ topology. Herdr and zellij debug do not contact a server; zellij debug prints
 the exact KDL layout bootmux would use. tmux debug may start a tmux server to
 read `base-index`, `pane-base-index`, and active-session state.
 
+A Herdr workspace and a zellij session both settle outside the terminal that
+ran the command, so a successful `start`, `local`, or `stop` prints one line
+naming the outcome:
+
+```text
+bootmux: created herdr workspace "myapp" (socket:/Users/me/.config/herdr/herdr.sock)
+bootmux: stopped zellij session "myapp"
+```
+
+tmux stays silent because starting a tmux project hands the terminal over. See
+[Backends and lifecycle](docs/backends.md) for every reported outcome.
+
 Once the project is working, the explicit backend is optional. bootmux resolves
 it in this order:
 

@@ -146,6 +146,17 @@ bootmux --backend zellij stop myapp
 为了读取 `base-index`、`pane-base-index` 和活动 session 状态，可能会启动
 tmux server。
 
+Herdr workspace 和 zellij session 都在执行命令的终端之外生效，因此 `start`、
+`local` 和 `stop` 成功后会打印一行说明结果：
+
+```text
+bootmux: created herdr workspace "myapp" (socket:/Users/me/.config/herdr/herdr.sock)
+bootmux: stopped zellij session "myapp"
+```
+
+tmux 保持静默，因为启动 tmux 项目会直接接管终端。完整的结果列表见
+[后端与生命周期（英文）](docs/backends.md)。
+
 项目正常工作后，可以不再显式指定后端。bootmux 按以下顺序解析后端：
 
 1. `--backend tmux|herdr|zellij`

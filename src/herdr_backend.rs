@@ -17,7 +17,7 @@ use crate::project::{parse_settings, LoadOptions, HOOK_ON_PROJECT_STOP};
 use crate::settings::Backend;
 use crate::spec::{ProjectSpec, WindowSpec};
 use crate::template;
-use crate::util::{ask_yes, expand_path, say_colored, Color};
+use crate::util::{ask_yes, expand_path, report_outcome, say_colored, Color};
 use crate::yaml_ext::{get, join_or_string, parse};
 
 struct LoadedSpec {
@@ -156,6 +156,7 @@ pub fn stop(
     let managed = managed_for_spec(&index, &endpoint, &spec)?;
     let Some(managed) = managed.cloned() else {
         require_no_managed_config_on_other_endpoint(&index, &endpoint, &spec)?;
+        report_workspace("found no managed", &spec.name, &endpoint);
         return Ok(());
     };
     require_managed_project_identity(&managed, &spec)?;
@@ -175,6 +176,7 @@ pub fn stop(
             index.remove_exact_id(&endpoint, &managed.workspace_id);
             Ok(())
         })?;
+        report_workspace("found no managed", &spec.name, &endpoint);
         return Ok(());
     };
 
@@ -190,6 +192,7 @@ pub fn stop(
         }
         Ok(())
     })?;
+    report_workspace("stopped", &spec.name, &endpoint);
     Ok(())
 }
 
@@ -387,6 +390,7 @@ fn start_loaded(env: &Env, spec: ProjectSpec) -> Result<()> {
         let result = append_to_active(env, &client, &spec);
         drop(operation_lock);
         result?;
+        report_workspace("appended to", &spec.name, &endpoint);
         return run_hook(spec.hooks.exit.as_deref(), &spec.root, env)
             .context("on_project_exit hook failed");
     }
@@ -399,6 +403,7 @@ fn start_loaded(env: &Env, spec: ProjectSpec) -> Result<()> {
             client.focus_workspace(&existing.workspace_id)?;
         }
         drop(operation_lock);
+        report_workspace("reused", &spec.name, &endpoint);
         if spec.attach {
             attach_if_outside(env, &command_endpoint, &endpoint)?;
         }
@@ -492,6 +497,7 @@ fn start_loaded(env: &Env, spec: ProjectSpec) -> Result<()> {
         )));
     }
     drop(operation_lock);
+    report_workspace("created", &spec.name, &endpoint);
     if spec.attach {
         attach_if_outside(env, &command_endpoint, &endpoint)
             .context("Herdr workspace started and remains managed, but attaching failed")?;
@@ -1039,6 +1045,13 @@ fn validate_session_name(name: &str) -> Result<()> {
         bail!("Herdr session name `{name}` must be 1-64 ASCII letters, digits, `.`, `_`, or `-`.");
     }
     Ok(())
+}
+
+fn report_workspace(action: &str, project: &str, endpoint: &Endpoint) {
+    report_outcome(&format!(
+        "{action} herdr workspace {project:?} ({})",
+        describe_endpoint(endpoint)
+    ));
 }
 
 fn describe_endpoint(endpoint: &Endpoint) -> String {

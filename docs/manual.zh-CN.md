@@ -385,6 +385,17 @@ bootmux --backend herdr list --active
 bootmux --backend herdr stop myapp
 ```
 
+Herdr 和 zellij 后端在执行命令的终端之外生效，因此 `start`、`local` 和 `stop`
+成功后各会打印一行结果，说明是创建、复用、追加还是停止了哪个 workspace 或
+session：
+
+```text
+bootmux: created herdr workspace "myapp" (socket:/Users/me/.config/herdr/herdr.sock)
+bootmux: reused zellij session "myapp"
+```
+
+tmux 后端不打印这一行，因为 tmux 启动会接管终端，结果本身就可见。
+
 ### 项目简写
 
 如果项目名称可被发现，以下命令：

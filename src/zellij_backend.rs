@@ -20,7 +20,7 @@ use crate::process::CommandRunner;
 use crate::project::{parse_settings, LoadOptions};
 use crate::settings::Backend;
 use crate::spec::ProjectSpec;
-use crate::util::{ask_yes, say_colored, Color};
+use crate::util::{ask_yes, report_outcome, say_colored, Color};
 use crate::zellij::{LayoutFile, PaneInfo, Zellij};
 use crate::zellij_layout;
 
@@ -127,6 +127,7 @@ pub fn start(env: &Env, params: &StartParams) -> Result<()> {
     if client.has_session(&session)? {
         run_hook(spec.hooks.restart.as_deref(), &spec.root, env)
             .context("on_project_restart hook failed")?;
+        report_session("reused", &session);
         focus_session(env, &client, &session, spec.attach)?;
         return run_hook(spec.hooks.exit.as_deref(), &spec.root, env)
             .context("on_project_exit hook failed");
@@ -154,6 +155,7 @@ pub fn start(env: &Env, params: &StartParams) -> Result<()> {
         });
     }
 
+    report_session("created", &session);
     focus_session(env, &client, &session, spec.attach)?;
     run_hook(spec.hooks.exit.as_deref(), &spec.root, env).context("on_project_exit hook failed")
 }
@@ -179,13 +181,16 @@ pub fn stop(
         LoadOptions::default(),
     )?;
     warn_ignored(&spec);
+    let session = session_name(&spec)?;
     stop_session(
         env,
         &Zellij::new(),
-        &session_name(&spec)?,
+        &session,
         &spec.root,
         spec.hooks.stop.as_deref(),
-    )
+    )?;
+    report_session("stopped", &session);
+    Ok(())
 }
 
 pub fn stop_all(env: &Env, noconfirm: bool) -> Result<()> {
@@ -299,6 +304,7 @@ fn append_to_active<R: CommandRunner>(
         });
     }
 
+    report_session("appended to", session);
     run_hook(spec.hooks.exit.as_deref(), &spec.root, env).context("on_project_exit hook failed")
 }
 
@@ -467,6 +473,10 @@ fn ordered_panes<R: CommandRunner>(client: &Zellij<R>, session: &str) -> Result<
 }
 
 /// Brings the client to the project, if it was asked to.
+fn report_session(action: &str, session: &str) {
+    report_outcome(&format!("{action} zellij session {session:?}"));
+}
+
 fn focus_session<R: CommandRunner>(
     env: &Env,
     client: &Zellij<R>,

@@ -22,6 +22,17 @@ fn matrix(row: &str) {
     println!("BOOTMUX_MATRIX zellij {row} PASS");
 }
 
+/// A zellij session is created detached, so the terminal that ran the command
+/// only learns the outcome from this line.
+fn assert_outcome(output: &Output, action: &str, session: &str, operation: &str) {
+    let expected = format!("bootmux: {action} zellij session {session:?}");
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        stdout.lines().any(|line| line == expected),
+        "{operation} must report `{expected}` on stdout\nstdout: {stdout}"
+    );
+}
+
 /// Owns the isolated sessions and tears them down even when an assertion fails.
 struct Harness {
     _temp: TempDir,
@@ -341,10 +352,9 @@ fn zellij_runtime_matrix() {
         );
     }
 
-    assert_success(
-        &harness.bootmux(&["start", "-p", &main_path]),
-        "first start",
-    );
+    let first_start = harness.bootmux(&["start", "-p", &main_path]);
+    assert_success(&first_start, "first start");
+    assert_outcome(&first_start, "created", &session, "first start");
     assert!(
         wait_until(|| harness.session_is_running(&session)),
         "the session should be running"
@@ -446,10 +456,9 @@ fn zellij_runtime_matrix() {
     );
     matrix("startup_focus");
 
-    assert_success(
-        &harness.bootmux(&["start", "-p", &main_path]),
-        "second start",
-    );
+    let second_start = harness.bootmux(&["start", "-p", &main_path]);
+    assert_success(&second_start, "second start");
+    assert_outcome(&second_start, "reused", &session, "second start");
     sleep(Duration::from_secs(1));
     assert_eq!(
         harness.tab_names(&session),
@@ -502,8 +511,12 @@ fn zellij_runtime_matrix() {
         &harness.bootmux(&["start", "-p", &tools_path, "--append"]),
         "append outside a session",
     );
-    assert_success(
-        &harness.bootmux_inside(&["start", "-p", &tools_path, "--append"], &session),
+    let appended = harness.bootmux_inside(&["start", "-p", &tools_path, "--append"], &session);
+    assert_success(&appended, "append inside the session");
+    assert_outcome(
+        &appended,
+        "appended to",
+        &session,
         "append inside the session",
     );
     assert!(
@@ -600,7 +613,9 @@ fn zellij_runtime_matrix() {
         "the second project should be running"
     );
 
-    assert_success(&harness.bootmux(&["stop", "-p", &main_path]), "stop");
+    let stopped = harness.bootmux(&["stop", "-p", &main_path]);
+    assert_success(&stopped, "stop");
+    assert_outcome(&stopped, "stopped", &session, "stop");
     assert!(
         wait_until(|| !harness.session_is_running(&session)),
         "stop must remove the session"

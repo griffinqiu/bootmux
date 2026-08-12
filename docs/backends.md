@@ -77,6 +77,29 @@ exist but their ordinary child processes have exited, bootmux does not restart
 those processes automatically. Put recovery logic in `on_project_restart`, or
 stop and recreate the project.
 
+### Reporting the outcome
+
+The Herdr and zellij backends settle outside the terminal that ran the command,
+so a successful `start`, `local`, or `stop` prints one line on stdout naming
+what happened:
+
+```text
+bootmux: created herdr workspace "myapp" (socket:/Users/me/.config/herdr/herdr.sock)
+bootmux: reused herdr workspace "myapp" (socket:/Users/me/.config/herdr/herdr.sock)
+bootmux: appended to herdr workspace "myapp" (socket:/Users/me/.config/herdr/herdr.sock)
+bootmux: stopped herdr workspace "myapp" (socket:/Users/me/.config/herdr/herdr.sock)
+bootmux: found no managed herdr workspace "myapp" (socket:/Users/me/.config/herdr/herdr.sock)
+
+bootmux: created zellij session "myapp"
+bootmux: reused zellij session "myapp"
+bootmux: appended to zellij session "myapp"
+bootmux: stopped zellij session "myapp"
+```
+
+The tmux backend stays silent because a tmux start hands the terminal over, so
+its result is already visible. `stop-all` keeps its own existing output on every
+backend.
+
 ## tmux backend
 
 ### Generated script

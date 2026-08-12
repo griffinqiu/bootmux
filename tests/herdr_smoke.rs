@@ -23,6 +23,29 @@ fn matrix(row: &str) {
     println!("BOOTMUX_MATRIX herdr {row} PASS");
 }
 
+/// Herdr settles outside the calling terminal, so every successful lifecycle
+/// command has to say what it did. The endpoint suffix is omitted because the
+/// server reports its socket through the platform's canonical path.
+fn outcome_prefix(action: &str, project: &str) -> String {
+    format!("bootmux: {action} herdr workspace {project:?} (")
+}
+
+fn reports_outcome(output: &Output, action: &str, project: &str) -> bool {
+    let prefix = outcome_prefix(action, project);
+    String::from_utf8_lossy(&output.stdout)
+        .lines()
+        .any(|line| line.starts_with(&prefix))
+}
+
+fn assert_outcome(output: &Output, action: &str, project: &str, operation: &str) {
+    assert!(
+        reports_outcome(output, action, project),
+        "{operation} must report `{}` on stdout\nstdout: {}",
+        outcome_prefix(action, project),
+        String::from_utf8_lossy(&output.stdout)
+    );
+}
+
 struct Harness {
     _temp: TempDir,
     bootmux: PathBuf,
@@ -333,6 +356,22 @@ windows:
         1,
         "concurrent starts must converge on one workspace"
     );
+    assert_eq!(
+        concurrent
+            .iter()
+            .filter(|output| reports_outcome(output, "created", &label))
+            .count(),
+        1,
+        "exactly one concurrent start may report a creation"
+    );
+    assert_eq!(
+        concurrent
+            .iter()
+            .filter(|output| reports_outcome(output, "reused", &label))
+            .count(),
+        1,
+        "the losing concurrent start must report a reuse"
+    );
     matrix("concurrent_start");
 
     // The status document is how bootmux checks that it can talk to Herdr.
@@ -470,7 +509,9 @@ windows:
     );
     matrix("direct_pane_focus");
 
-    assert_success(&harness.bootmux(&harness.start_args()), "repeated start");
+    let repeated = harness.bootmux(&harness.start_args());
+    assert_success(&repeated, "repeated start");
+    assert_outcome(&repeated, "reused", &label, "repeated start");
     assert_eq!(
         harness.workspaces(&label).len(),
         1,
@@ -538,6 +579,7 @@ windows:
         &workspace_id,
     );
     assert_success(&appended, "bootmux Herdr append");
+    assert_outcome(&appended, "appended to", &label, "bootmux Herdr append");
     let workspace = harness.workspaces(&label).remove(0);
     assert_eq!(workspace.get("tab_count").and_then(Value::as_u64), Some(4));
     assert_eq!(workspace.get("pane_count").and_then(Value::as_u64), Some(8));
@@ -595,18 +637,17 @@ windows:
     );
     matrix("ownership_rollback");
 
-    assert_success(
-        &harness.bootmux(&[
-            "--backend",
-            "herdr",
-            "stop",
-            "--project-config",
-            &project_path,
-            &label_setting,
-            &socket_setting,
-        ]),
-        "bootmux Herdr stop",
-    );
+    let stopped = harness.bootmux(&[
+        "--backend",
+        "herdr",
+        "stop",
+        "--project-config",
+        &project_path,
+        &label_setting,
+        &socket_setting,
+    ]);
+    assert_success(&stopped, "bootmux Herdr stop");
+    assert_outcome(&stopped, "stopped", &label, "bootmux Herdr stop");
     assert_eq!(
         read_lines(&hooks_log)
             .iter()

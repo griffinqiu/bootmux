@@ -4,6 +4,19 @@ All notable changes to bootmux are documented here.
 
 ## [Unreleased]
 
+- Herdr and zellij: a successful `start`, `local`, or `stop` now prints one line
+  on stdout naming the outcome and the workspace or session it applied to, such
+  as `bootmux: created herdr workspace "myapp" (socket:…)` or
+  `bootmux: stopped zellij session "myapp"`. Both backends place the result
+  outside the terminal that ran the command, so exiting 0 in silence was
+  indistinguishable from doing nothing — reported against Herdr 0.8.0 and
+  zellij 0.44.3 in
+  [#1](https://github.com/griffinqiu/bootmux/issues/1). This covers the create,
+  reuse, append, and stop outcomes. The tmux backend is unchanged, because a
+  tmux start hands the terminal over; `stop-all` keeps its existing output on
+  every backend. No user action is required, but scripts that assumed these
+  commands write nothing to stdout on success will now see one line.
+
 ## [0.1.5] - 2026-08-11
 
 - zellij: hand rendered layouts to zellij as a file instead of an inline
