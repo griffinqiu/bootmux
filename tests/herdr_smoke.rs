@@ -564,6 +564,87 @@ windows:
     );
     matrix("active_listing");
 
+    // One templated config must be able to own several live workspaces at
+    // once, keyed by the rendered project name, so alternate instances work on
+    // Herdr exactly as they do on tmux.
+    let alt_project = harness.projects.join("alt.yml");
+    let alt_root = harness.home.join("alt");
+    std::fs::create_dir_all(&alt_root).unwrap();
+    std::fs::write(
+        &alt_project,
+        format!(
+            "name: <%= @settings[\"label\"] %>\nroot: {root}\n\
+             socket_path: <%= @settings[\"socket\"] %>\nattach: false\nwindows:\n  - shell:\n",
+            root = alt_root.display(),
+        ),
+    )
+    .unwrap();
+    let alt_path = alt_project.to_str().unwrap().to_string();
+    let alt_labels = [format!("{label}-one"), format!("{label}-two")];
+    for alt_label in &alt_labels {
+        let started = harness.bootmux(&[
+            "--backend",
+            "herdr",
+            "start",
+            "--project-config",
+            &alt_path,
+            &format!("label={alt_label}"),
+            &socket_setting,
+            "--no-attach",
+        ]);
+        assert_success(&started, "alternate instance start");
+        assert_outcome(&started, "created", alt_label, "alternate instance start");
+    }
+    for alt_label in &alt_labels {
+        assert_eq!(
+            harness.workspaces(alt_label).len(),
+            1,
+            "each alternate instance must own exactly one workspace"
+        );
+    }
+    // Stopping one instance must leave its sibling untouched.
+    let stopped_alt = harness.bootmux(&[
+        "--backend",
+        "herdr",
+        "stop",
+        "--project-config",
+        &alt_path,
+        &format!("label={}", alt_labels[0]),
+        &socket_setting,
+    ]);
+    assert_success(&stopped_alt, "alternate instance stop");
+    assert_outcome(
+        &stopped_alt,
+        "stopped",
+        &alt_labels[0],
+        "alternate instance stop",
+    );
+    assert!(
+        harness.workspaces(&alt_labels[0]).is_empty(),
+        "stop must close only the selected alternate instance"
+    );
+    assert_eq!(
+        harness.workspaces(&alt_labels[1]).len(),
+        1,
+        "stopping one alternate instance must not touch its sibling"
+    );
+    let stopped_sibling = harness.bootmux(&[
+        "--backend",
+        "herdr",
+        "stop",
+        "--project-config",
+        &alt_path,
+        &format!("label={}", alt_labels[1]),
+        &socket_setting,
+    ]);
+    assert_success(&stopped_sibling, "alternate sibling stop");
+    assert!(
+        harness.workspaces(&alt_labels[1]).is_empty(),
+        "the remaining alternate instance must still be stoppable by name"
+    );
+    std::fs::remove_file(&alt_project).unwrap();
+    matrix("alternate_instances");
+
     let appended = harness.bootmux_in_workspace(
         &[
             "--backend",
@@ -614,18 +695,87 @@ windows:
         ]),
         "stop with the wrong endpoint",
     );
+    // A rendered name that owns nothing names a sibling instance rather than a
+    // corrupted identity, so it is reported instead of refused — and it must
+    // still leave this workspace alone.
+    let other_instance = harness.bootmux(&[
+        "--backend",
+        "herdr",
+        "stop",
+        "--project-config",
+        &project_path,
+        "label=wrong-template-value",
+        &socket_setting,
+    ]);
+    assert_success(
+        &other_instance,
+        "stop naming an instance that is not running",
+    );
+    assert_outcome(
+        &other_instance,
+        "found no managed",
+        "wrong-template-value",
+        "stop naming an instance that is not running",
+    );
+
+    // Within a matched name the identity check still has to fail closed, which
+    // a drifted root proves without touching the config under test.
+    let drift_project = harness.projects.join("drift.yml");
+    let drift_root = harness.home.join("drift");
+    let drift_other_root = harness.home.join("drift-elsewhere");
+    for directory in [&drift_root, &drift_other_root] {
+        std::fs::create_dir_all(directory).unwrap();
+    }
+    std::fs::write(
+        &drift_project,
+        "name: <%= @settings[\"label\"] %>\nroot: <%= @settings[\"root\"] %>\n\
+         socket_path: <%= @settings[\"socket\"] %>\nattach: false\nwindows:\n  - shell:\n",
+    )
+    .unwrap();
+    let drift_path = drift_project.to_str().unwrap().to_string();
+    let drift_label = format!("label={label}-drift");
+    assert_success(
+        &harness.bootmux(&[
+            "--backend",
+            "herdr",
+            "start",
+            "--project-config",
+            &drift_path,
+            &drift_label,
+            &format!("root={}", drift_root.display()),
+            &socket_setting,
+            "--no-attach",
+        ]),
+        "drifted-root fixture start",
+    );
     assert_failure(
         &harness.bootmux(&[
             "--backend",
             "herdr",
             "stop",
             "--project-config",
-            &project_path,
-            "label=wrong-template-value",
+            &drift_path,
+            &drift_label,
+            &format!("root={}", drift_other_root.display()),
             &socket_setting,
         ]),
-        "stop with the wrong rendered identity",
+        "stop with a drifted root under a matched name",
     );
+    assert_success(
+        &harness.bootmux(&[
+            "--backend",
+            "herdr",
+            "stop",
+            "--project-config",
+            &drift_path,
+            &drift_label,
+            &format!("root={}", drift_root.display()),
+            &socket_setting,
+        ]),
+        "drifted-root fixture cleanup",
+    );
+    std::fs::remove_file(&drift_project).unwrap();
+
     assert_eq!(
         harness.workspaces(&label).len(),
         1,

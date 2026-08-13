@@ -464,9 +464,22 @@ bootmux start myapp instance=myapp-review
 bootmux stop myapp instance=myapp-review
 ```
 
-如果没有这种可复现身份，通过 tmux `-n` 启动的会话可能需要直接用 tmux
-清理。Herdr 的替代工作区仍会被记录，并可由基于所有权的 `stop-all` 处理，
-但普通的 stop 无法根据未变更的配置重建其身份。
+同一份配置的多个实例可以在所有后端上同时运行。为每个实例传入不同的渲染名称，
+各自会得到独立的 tmux session、Herdr workspace 或 zellij session，并可独立
+启动与停止：
+
+```sh
+bootmux start myapp instance=myapp-review root=~/code/myapp-review
+bootmux start myapp instance=myapp-main   root=~/code/myapp
+bootmux stop  myapp instance=myapp-review   # myapp-main 继续运行
+```
+
+Herdr 的所有权记录同样以渲染后的名称为键，因此停止一个实例不会影响其同胞实例。
+传入一个未拥有任何工作区的名称时，会报告没有受管工作区，而不是报错。
+
+如果没有这种可复现身份，通过 tmux `-n` 启动的会话可能需要直接用 tmux 清理，
+普通的 stop 也无法根据未变更的配置重建该实例的身份；以这种方式启动的 Herdr
+工作区仍会被记录，并可由基于所有权的 `stop-all` 处理。
 
 ## 7. 选择后端
 

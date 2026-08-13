@@ -387,6 +387,12 @@ ${XDG_STATE_HOME:-$HOME/.local/state}/bootmux/herdr-workspaces.json
 
 `XDG_STATE_HOME` is used only when it is an absolute path.
 
+Ownership is keyed by endpoint, canonical config path, and the rendered project
+name. One templated config can therefore own several live workspaces at the same
+time — one per rendered name — and each is started and stopped independently. An
+entry recorded under a different rendered name belongs to a sibling instance, so
+it neither blocks a new start nor is closed by another instance's stop.
+
 Each managed record includes:
 
 - canonical endpoint and launch selector;
@@ -407,10 +413,13 @@ instead.
 
 ## Herdr stop safety
 
-Ordinary stop requires the selected config to match the managed record's
-endpoint, config path, project name, label, root, workspace identity, and stop
-hook snapshot. A template or socket change that alters endpoint, lifecycle
-identity, or the rendered stop hook is not accepted.
+Ordinary stop selects the managed record by endpoint, config path, and rendered
+project name, then requires that record to match the selected config's label,
+root, workspace identity, and stop hook snapshot. A template or socket change
+that alters endpoint, lifecycle identity, or the rendered stop hook is not
+accepted. A rendered name that owns nothing is reported as having no managed
+workspace rather than refused, because it names a sibling instance that is not
+running.
 
 If a workspace ID disappeared, recovery succeeds only for one exact
 label-and-root match. If the ID now names a different workspace, or several

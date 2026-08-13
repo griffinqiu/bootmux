@@ -4,6 +4,19 @@ All notable changes to bootmux are documented here.
 
 ## [Unreleased]
 
+- Herdr: one templated config can again run several alternate instances at the
+  same time. Ownership is now keyed by endpoint, config path, and the rendered
+  project name, so starting a second instance from the same config no longer
+  fails with `refusing an identity-mismatched lifecycle operation`, and stopping
+  one instance leaves its siblings running — matching the tmux backend and the
+  manual's "Run alternate instances". Reported against Herdr 0.8.0 in
+  [#2](https://github.com/griffinqiu/bootmux/issues/2). A stop whose rendered
+  name owns no workspace now reports that instead of failing; the label, root,
+  workspace-identity, and stop-hook checks within a matched name are unchanged.
+  No user action and no state migration are required, because every ownership
+  record already stores its project name. The required Herdr runtime matrix
+  gained an `alternate_instances` row covering this against Herdr 0.8.0.
+
 ## [0.2.0] - 2026-08-13
 
 - Herdr and zellij: a successful `start`, `local`, or `stop` now prints one line

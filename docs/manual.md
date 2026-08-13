@@ -485,10 +485,24 @@ bootmux start myapp instance=myapp-review
 bootmux stop myapp instance=myapp-review
 ```
 
+Several instances of the same config can run at the same time on every backend.
+Pass a different rendered name per instance, and each one gets its own tmux
+session, Herdr workspace, or zellij session that starts and stops on its own:
+
+```sh
+bootmux start myapp instance=myapp-review root=~/code/myapp-review
+bootmux start myapp instance=myapp-main   root=~/code/myapp
+bootmux stop  myapp instance=myapp-review   # leaves myapp-main running
+```
+
+Herdr keys its ownership records by the rendered name too, so stopping one
+instance never touches a sibling. Passing a name that owns nothing reports that
+there is no managed workspace instead of failing.
+
 Without that reproducible identity, a tmux `-n` session may require direct
-tmux cleanup. A Herdr alternate workspace is still recorded and can be handled
-by ownership-based `stop-all`, but ordinary stop cannot reconstruct its
-identity from the unchanged config.
+tmux cleanup, and ordinary stop cannot reconstruct the instance's identity from
+the unchanged config; a Herdr workspace started that way is still recorded and
+can be handled by ownership-based `stop-all`.
 
 ## 7. Choose a backend
 

@@ -882,33 +882,32 @@ fn find_or_adopt(
     Ok(None)
 }
 
+/// Ownership is keyed by the rendered project name as well as the endpoint and
+/// config path, so one templated config can own several live workspaces at
+/// once. An entry recorded under a different rendered name belongs to another
+/// instance and is therefore not a match rather than an identity mismatch.
 fn managed_for_spec<'a>(
     index: &'a StateIndex,
     endpoint: &Endpoint,
     spec: &ProjectSpec,
 ) -> Result<Option<&'a ManagedWorkspace>> {
-    let by_config: Vec<_> = index
+    let owned: Vec<_> = index
         .managed_workspaces
         .iter()
-        .filter(|managed| &managed.endpoint == endpoint && managed.config_path == spec.source_path)
+        .filter(|managed| {
+            &managed.endpoint == endpoint
+                && managed.config_path == spec.source_path
+                && managed.project_name == spec.name
+        })
         .collect();
-    match by_config.len() {
+    match owned.len() {
         0 => Ok(None),
-        1 => Ok(by_config.into_iter().next()),
-        _ => {
-            let exact: Vec<_> = by_config
-                .into_iter()
-                .filter(|managed| managed.project_name == spec.name)
-                .collect();
-            match exact.len() {
-                1 => Ok(exact.into_iter().next()),
-                count => bail!(
-                    "state contains multiple ownership entries for config {} and {count} match project name `{}`; refusing an ambiguous operation.",
-                    spec.source_path.display(),
-                    spec.name
-                ),
-            }
-        }
+        1 => Ok(owned.into_iter().next()),
+        count => bail!(
+            "state contains {count} ownership entries for config {} and project name `{}`; refusing an ambiguous operation.",
+            spec.source_path.display(),
+            spec.name
+        ),
     }
 }
 
@@ -936,10 +935,16 @@ fn require_no_managed_config_on_other_endpoint(
     endpoint: &Endpoint,
     spec: &ProjectSpec,
 ) -> Result<()> {
+    // Scoped to the rendered name for the same reason ownership is: a sibling
+    // instance living on another endpoint is not this instance's business.
     let mut other_endpoints = index
         .managed_workspaces
         .iter()
-        .filter(|managed| managed.config_path == spec.source_path && &managed.endpoint != endpoint)
+        .filter(|managed| {
+            managed.config_path == spec.source_path
+                && managed.project_name == spec.name
+                && &managed.endpoint != endpoint
+        })
         .map(|managed| describe_endpoint(&managed.endpoint))
         .collect::<Vec<_>>();
     other_endpoints.sort();
@@ -1527,6 +1532,102 @@ mod tests {
             .to_string();
         assert!(error.contains("same socket settings"));
         assert!(error.contains("refusing a silent no-op"));
+    }
+
+    #[test]
+    fn ownership_is_keyed_by_rendered_project_name() {
+        fn entry(workspace_id: &str, name: &str) -> ManagedWorkspace {
+            ManagedWorkspace {
+                endpoint: Endpoint::Default,
+                launch_endpoint: None,
+                workspace_id: workspace_id.into(),
+                label: name.into(),
+                root_cwd: format!("/tmp/{name}").into(),
+                config_path: "/tmp/alt.yml".into(),
+                project_name: name.into(),
+                root_pane_id: None,
+                stop_hook: None,
+            }
+        }
+        fn spec_named(name: &str) -> ProjectSpec {
+            ProjectSpec {
+                source_path: "/tmp/alt.yml".into(),
+                name: name.into(),
+                root: format!("/tmp/{name}"),
+                attach: false,
+                append: false,
+                socket_name: None,
+                socket_path: None,
+                startup_window: 0,
+                startup_pane: None,
+                pre_window: None,
+                hooks: Default::default(),
+                windows: vec![simple_window(None, 1)],
+                warnings: Vec::new(),
+            }
+        }
+        let index_of = |entries: Vec<ManagedWorkspace>| StateIndex {
+            managed_workspaces: entries,
+            ..StateIndex::default()
+        };
+
+        let empty = index_of(Vec::new());
+        assert!(
+            managed_for_spec(&empty, &Endpoint::Default, &spec_named("a"))
+                .unwrap()
+                .is_none()
+        );
+
+        // One live instance must not claim a differently named sibling, which
+        // is what made a second alternate instance unstartable.
+        let single = index_of(vec![entry("w1", "a")]);
+        assert!(
+            managed_for_spec(&single, &Endpoint::Default, &spec_named("b"))
+                .unwrap()
+                .is_none()
+        );
+        assert_eq!(
+            managed_for_spec(&single, &Endpoint::Default, &spec_named("a"))
+                .unwrap()
+                .map(|managed| managed.workspace_id.as_str()),
+            Some("w1")
+        );
+
+        let both = index_of(vec![entry("w1", "a"), entry("w2", "b")]);
+        for (name, workspace_id) in [("a", "w1"), ("b", "w2")] {
+            assert_eq!(
+                managed_for_spec(&both, &Endpoint::Default, &spec_named(name))
+                    .unwrap()
+                    .map(|managed| managed.workspace_id.as_str()),
+                Some(workspace_id)
+            );
+        }
+
+        let duplicated = index_of(vec![entry("w1", "a"), entry("w2", "a")]);
+        let error = managed_for_spec(&duplicated, &Endpoint::Default, &spec_named("a"))
+            .unwrap_err()
+            .to_string();
+        assert!(error.contains("2 ownership entries"));
+        assert!(error.contains("refusing an ambiguous operation"));
+
+        // A sibling instance on another endpoint is not this instance's
+        // business, so it must not turn a fresh start into a refusal.
+        let elsewhere = index_of(vec![ManagedWorkspace {
+            endpoint: Endpoint::SocketPath("/tmp/other.sock".into()),
+            ..entry("w9", "a")
+        }]);
+        require_no_managed_config_on_other_endpoint(
+            &elsewhere,
+            &Endpoint::Default,
+            &spec_named("b"),
+        )
+        .unwrap();
+        assert!(require_no_managed_config_on_other_endpoint(
+            &elsewhere,
+            &Endpoint::Default,
+            &spec_named("a")
+        )
+        .is_err());
     }
 
     #[test]
