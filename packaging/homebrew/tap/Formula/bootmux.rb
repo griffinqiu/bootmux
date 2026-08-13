@@ -1,7 +1,7 @@
 class Bootmux < Formula
   desc "Run tmuxinator-style YAML projects in tmux, Herdr, or zellij"
   homepage "https://github.com/griffinqiu/bootmux"
-  version "0.1.5"
+  version "0.2.0"
   license "MIT"
 
   head do
@@ -12,23 +12,23 @@ class Bootmux < Formula
 
   on_macos do
     on_arm do
-      url "https://github.com/griffinqiu/bootmux/releases/download/v0.1.5/bootmux-aarch64-apple-darwin.tar.gz"
-      sha256 "305bdc71c42cee0b44932e86702577794e53cbc4e84778614c378d3e2950e47f"
+      url "https://github.com/griffinqiu/bootmux/releases/download/v0.2.0/bootmux-aarch64-apple-darwin.tar.gz"
+      sha256 "3b0a4ad0f2a9226249367e90e463aba730eacf5e02a664a85e6359882b27fa24"
     end
     on_intel do
-      url "https://github.com/griffinqiu/bootmux/releases/download/v0.1.5/bootmux-x86_64-apple-darwin.tar.gz"
-      sha256 "611344e53d7f767fe42b42b6d02d0c271bd8d931cd663f3b17630990e952e95b"
+      url "https://github.com/griffinqiu/bootmux/releases/download/v0.2.0/bootmux-x86_64-apple-darwin.tar.gz"
+      sha256 "ae8527ca329a878ae0398c6ed56b864d9ee9f0ef1de9ca5837e9f4727da03de5"
     end
   end
 
   on_linux do
     on_arm do
-      url "https://github.com/griffinqiu/bootmux/releases/download/v0.1.5/bootmux-aarch64-unknown-linux-musl.tar.gz"
-      sha256 "758595a8c337af1014ec9f892c7f3dde994acdc40a939ec530d6480b2399acd6"
+      url "https://github.com/griffinqiu/bootmux/releases/download/v0.2.0/bootmux-aarch64-unknown-linux-musl.tar.gz"
+      sha256 "886c6f273cc3b1cc8dca75004fe8eb1ab6027c3c2b03976daac06829aab11d36"
     end
     on_intel do
-      url "https://github.com/griffinqiu/bootmux/releases/download/v0.1.5/bootmux-x86_64-unknown-linux-musl.tar.gz"
-      sha256 "ddd4e318b3f0b6efafa5f018b6a6ae7d8ca7401c9d1e5a57466dd515882029f3"
+      url "https://github.com/griffinqiu/bootmux/releases/download/v0.2.0/bootmux-x86_64-unknown-linux-musl.tar.gz"
+      sha256 "55e4de82391e5a33c864b445e7e5199034af45981edc52aaaaaae9c9577a8374"
     end
   end
 
