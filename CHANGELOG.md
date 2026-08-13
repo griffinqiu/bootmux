@@ -4,6 +4,8 @@ All notable changes to bootmux are documented here.
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-08-14
+
 - Herdr: one templated config can again run several alternate instances at the
   same time. Ownership is now keyed by endpoint, config path, and the rendered
   project name, so starting a second instance from the same config no longer
