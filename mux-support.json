@@ -1,11 +1,11 @@
 {
   "backends": {
     "herdr": {
-      "bootmux_commit": "5464f5385b921af30995da716ebab085dd979ee1",
-      "bootmux_version": "0.2.0",
-      "contract_fingerprint": "sha256:8230f69f297711528ed4bc747f7835578ba3280280b5759cd6d4bedcc292d825",
+      "bootmux_commit": "66072302fd441e5f5f34139be743ae3cd55e5f23",
+      "bootmux_version": "0.3.0",
+      "contract_fingerprint": "sha256:8426668233a9dff30e60d57b8318b4bd3484d1d4017ac72ab4ea4fff2c054d66",
       "evidence": "exact-stable-smoke",
-      "matrix_fingerprint": "sha256:ad3e393ac6dd6c82f32355067294e70aa157d638591334abb83f1d69a6b02e28",
+      "matrix_fingerprint": "sha256:1869b9d64b115b1bac04086b419f71fff38cf2f3d955148fbf3b2a85a02500b1",
       "research_after": "0.8.0",
       "research_evidence": "exact-stable-smoke",
       "research_notes_sha256": "sha256:e154bf8c1efac3e2c809feb13f0859c29a765121480947dc3791863504134e08",
@@ -22,11 +22,11 @@
       "verified_on": "2026-08-13"
     },
     "tmux": {
-      "bootmux_commit": "5464f5385b921af30995da716ebab085dd979ee1",
-      "bootmux_version": "0.2.0",
-      "contract_fingerprint": "sha256:8230f69f297711528ed4bc747f7835578ba3280280b5759cd6d4bedcc292d825",
+      "bootmux_commit": "66072302fd441e5f5f34139be743ae3cd55e5f23",
+      "bootmux_version": "0.3.0",
+      "contract_fingerprint": "sha256:8426668233a9dff30e60d57b8318b4bd3484d1d4017ac72ab4ea4fff2c054d66",
       "evidence": "exact-stable-smoke",
-      "matrix_fingerprint": "sha256:ad3e393ac6dd6c82f32355067294e70aa157d638591334abb83f1d69a6b02e28",
+      "matrix_fingerprint": "sha256:1869b9d64b115b1bac04086b419f71fff38cf2f3d955148fbf3b2a85a02500b1",
       "research_after": "3.7b",
       "research_evidence": "exact-stable-smoke",
       "research_notes_sha256": "sha256:b97838356767a7d6ddadf26ac4021e6216bbad5fc417f556c233b5afcb92960b",
@@ -40,11 +40,11 @@
       "verified_on": "2026-08-13"
     },
     "zellij": {
-      "bootmux_commit": "5464f5385b921af30995da716ebab085dd979ee1",
-      "bootmux_version": "0.2.0",
-      "contract_fingerprint": "sha256:8230f69f297711528ed4bc747f7835578ba3280280b5759cd6d4bedcc292d825",
+      "bootmux_commit": "66072302fd441e5f5f34139be743ae3cd55e5f23",
+      "bootmux_version": "0.3.0",
+      "contract_fingerprint": "sha256:8426668233a9dff30e60d57b8318b4bd3484d1d4017ac72ab4ea4fff2c054d66",
       "evidence": "exact-stable-smoke",
-      "matrix_fingerprint": "sha256:ad3e393ac6dd6c82f32355067294e70aa157d638591334abb83f1d69a6b02e28",
+      "matrix_fingerprint": "sha256:1869b9d64b115b1bac04086b419f71fff38cf2f3d955148fbf3b2a85a02500b1",
       "research_after": "0.44.3",
       "research_evidence": "exact-stable-smoke",
       "research_notes_sha256": "sha256:e2344c9776ea94b1a6282953a6020475ef49dfb33d9154d594509d2933bcbf27",
