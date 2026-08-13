@@ -4,6 +4,8 @@ All notable changes to bootmux are documented here.
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-08-13
+
 - Herdr and zellij: a successful `start`, `local`, or `stop` now prints one line
   on stdout naming the outcome and the workspace or session it applied to, such
   as `bootmux: created herdr workspace "myapp" (socket:…)` or
