@@ -4,6 +4,8 @@ All notable changes to bootmux are documented here.
 
 ## [Unreleased]
 
+## [0.3.1] - 2026-08-21
+
 - Herdr 0.8.2: accept socket protocol 20 after verifying that the structured
   CLI, JSON responses, direct pane-focus request, and complete lifecycle matrix
   used by bootmux remain compatible. Existing Herdr 0.7.5 and 0.8.0 users stay

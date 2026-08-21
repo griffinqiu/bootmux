@@ -122,12 +122,12 @@ Cargo 通常会把二进制文件安装到
 
 ```sh
 mise use -g rust
-mise use -g cargo:bootmux@0.3.0
+mise use -g cargo:bootmux@0.3.1
 bootmux version
 ```
 
 如果只想为某个项目固定 bootmux，请在项目中运行不带 `-g` 的
-`mise use cargo:bootmux@0.3.0`。
+`mise use cargo:bootmux@0.3.1`。
 
 mise 默认会对 `latest` 这样的模糊版本请求应用 24 小时的最短发布年龄。
 因此刚发布的 crate 使用 `cargo:bootmux@latest` 时可能出现
