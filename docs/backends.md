@@ -179,7 +179,7 @@ does not aggregate those statuses. Verify the remaining tmux sessions after
 ## Herdr backend
 
 The Herdr backend requires a Unix-like platform, Herdr 0.7.5 or newer, and
-socket protocol 17 or 19.
+socket protocol 17, 19, or 20.
 
 Most operations use Herdr's
 [structured CLI](https://herdr.dev/docs/cli-reference/) and thread the returned

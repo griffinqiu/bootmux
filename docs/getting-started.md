@@ -11,7 +11,7 @@ bootmux needs at least one supported multiplexer:
 
 - a Unix-like operating system
 - tmux 2.6 or newer
-- Herdr 0.7.5 or newer, using socket protocol 17 or 19
+- Herdr 0.7.5 or newer, using socket protocol 17, 19, or 20
 - zellij 0.44 or newer
 
 The fastest install is Homebrew, which downloads a prebuilt executable and

@@ -4,6 +4,15 @@ All notable changes to bootmux are documented here.
 
 ## [Unreleased]
 
+- Herdr 0.8.2: accept socket protocol 20 after verifying that the structured
+  CLI, JSON responses, direct pane-focus request, and complete lifecycle matrix
+  used by bootmux remain compatible. Existing Herdr 0.7.5 and 0.8.0 users stay
+  supported, and upgrading requires no bootmux configuration or state migration.
+- zellij 0.45.0: keep a real client attached during the required append and
+  rollback matrix rows, matching zellij's new per-client tab sizing. The
+  complete runtime contract remains compatible; users need no configuration or
+  workflow changes.
+
 ## [0.3.0] - 2026-08-14
 
 - Herdr: one templated config can again run several alternate instances at the

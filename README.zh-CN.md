@@ -35,7 +35,7 @@ bootmux start myproject
 - Unix-like 操作系统
 - 至少安装一个终端多路复用器：
   - tmux >= 2.6
-  - Herdr >= 0.7.5，并使用 socket protocol 17 或 19
+  - Herdr >= 0.7.5，并使用 socket protocol 17、19 或 20
   - zellij >= 0.44
 - bootmux 已验证的最新版本记录在 [`mux-support.json`](mux-support.json)；
   上述版本仍是最低兼容要求。

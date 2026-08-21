@@ -1,4 +1,4 @@
-//! Typed command-line integration for Herdr (socket protocols 17 and 19).
+//! Typed command-line integration for Herdr (socket protocols 17, 19, and 20).
 //!
 //! The adapter deliberately drives Herdr through its documented JSON CLI
 //! rather than duplicating the socket protocol.  Every invocation pins one
@@ -23,9 +23,9 @@ pub use crate::process::{CommandOutput, CommandRunner, Invocation, ProcessRunner
 
 pub const MINIMUM_HERDR_VERSION: &str = "0.7.5";
 /// Socket protocol revisions this adapter has been verified against. Herdr
-/// 0.8.0 bumped the protocol to 19 without changing any CLI shape or JSON
-/// field bootmux reads, so both revisions are accepted instead of pinning one.
-pub const SUPPORTED_PROTOCOLS: &[u32] = &[17, 19];
+/// 0.8.0 and 0.8.2 bumped the protocol without changing any CLI shape or JSON
+/// field bootmux reads, so all verified revisions remain accepted.
+pub const SUPPORTED_PROTOCOLS: &[u32] = &[17, 19, 20];
 pub const STATE_INDEX_VERSION: u32 = 1;
 pub const STATE_INDEX_FILE_NAME: &str = "herdr-workspaces.json";
 
@@ -741,7 +741,7 @@ impl fmt::Display for HerdrVersion {
 }
 
 /// Renders the accepted protocol revisions for user-facing messages, e.g.
-/// `17 or 19`.
+/// `17 or 19 or 20`.
 pub fn describe_protocols(protocols: &[u32]) -> String {
     protocols
         .iter()
@@ -2149,11 +2149,11 @@ mod tests {
         let error = Error::UnsupportedProtocol {
             component: "client",
             found: 21,
-            supported: &[17, 19],
+            supported: &[17, 19, 20],
         };
         assert_eq!(
             error.to_string(),
-            "client Herdr protocol 21 is unsupported; require protocol 17 or 19"
+            "client Herdr protocol 21 is unsupported; require protocol 17 or 19 or 20"
         );
     }
 

@@ -36,7 +36,7 @@ bootmux start myproject
 - A Unix-like operating system
 - At least one multiplexer:
   - tmux >= 2.6
-  - Herdr >= 0.7.5 using socket protocol 17 or 19
+  - Herdr >= 0.7.5 using socket protocol 17, 19, or 20
   - zellij >= 0.44
 - The latest releases verified by bootmux are recorded in
   [`mux-support.json`](mux-support.json); the versions above remain the minimum

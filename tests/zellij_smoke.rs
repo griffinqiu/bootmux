@@ -9,7 +9,7 @@
 //! assertions and cleanup succeeded, so the coverage is machine-verifiable.
 
 use std::path::{Path, PathBuf};
-use std::process::{Command, Output};
+use std::process::{Child, Command, Output, Stdio};
 use std::thread::sleep;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
@@ -126,6 +126,38 @@ impl Harness {
         .lines()
         .map(str::to_string)
         .collect()
+    }
+
+    fn has_attached_client(&self, session: &str) -> bool {
+        let output = self.zellij(&["--session", session, "action", "list-tabs", "--json"]);
+        let Ok(Value::Array(tabs)) = serde_json::from_slice::<Value>(&output.stdout) else {
+            return false;
+        };
+        tabs.iter()
+            .any(|tab| tab.get("active") == Some(&Value::Bool(true)))
+    }
+
+    fn attach_client(&self, session: &str) -> Child {
+        let mut command = Command::new("script");
+        #[cfg(target_os = "linux")]
+        command.args([
+            "-q",
+            "-c",
+            &shell_words::join([self.zellij.to_string_lossy().as_ref(), "attach", session]),
+            "/dev/null",
+        ]);
+        #[cfg(not(target_os = "linux"))]
+        command
+            .args(["-q", "/dev/null"])
+            .arg(&self.zellij)
+            .args(["attach", session]);
+        self.command_env(&mut command);
+        command
+            .stdin(Stdio::piped())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .spawn()
+            .expect("the zellij smoke requires the system script utility")
     }
 }
 
@@ -511,6 +543,11 @@ fn zellij_runtime_matrix() {
         &harness.bootmux(&["start", "-p", &tools_path, "--append"]),
         "append outside a session",
     );
+    let mut attached_client = harness.attach_client(&session);
+    assert!(
+        wait_until(|| harness.has_attached_client(&session)),
+        "the append matrix requires a real client attached to the target session"
+    );
     let appended = harness.bootmux_inside(&["start", "-p", &tools_path, "--append"], &session);
     assert_success(&appended, "append inside the session");
     assert_outcome(
@@ -620,6 +657,11 @@ fn zellij_runtime_matrix() {
         wait_until(|| !harness.session_is_running(&session)),
         "stop must remove the session"
     );
+    assert!(
+        wait_until(|| attached_client.try_wait().unwrap().is_some()),
+        "the attached zellij client did not exit after its session stopped"
+    );
+    attached_client.wait().unwrap();
     assert_eq!(
         read_lines(&hooks_log)
             .iter()
