@@ -4,6 +4,8 @@ All notable changes to bootmux are documented here.
 
 ## [Unreleased]
 
+## [0.3.2] - 2026-08-22
+
 - zellij 0.45.0: preset and serialized layouts now reach the terminal with the
   proportions they ask for. bootmux used to nest every extra split, and zellij
   merges a container into its parent whenever both split the same way while

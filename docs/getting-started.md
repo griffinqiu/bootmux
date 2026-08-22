@@ -54,7 +54,7 @@ backend:
 
 ```sh
 mise use -g rust
-mise use -g cargo:bootmux@0.3.1
+mise use -g cargo:bootmux@0.3.2
 bootmux version
 ```
 
