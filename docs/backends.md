@@ -278,8 +278,11 @@ print command bodies and does not inspect live session state.
 
 The layout declares tab names, per-tab working directories, split geometry, pane
 titles, and the initial focus, so bootmux never issues separate focus or
-directory commands. Two KDL constraints are load-bearing: the document must be a
-complete `layout { … }` node, and every node needs its own line.
+directory commands. Three KDL constraints are load-bearing: the document must be
+a complete `layout { … }` node, every node needs its own line, and consecutive
+splits that run the same way must be written as one flat container, because
+zellij merges a same-direction container into its parent without rescaling the
+percentages it was written with.
 
 ### Session names
 
@@ -361,8 +364,9 @@ All three backends accept:
 - explicit bootmux pane chains
 
 tmux applies its native layout. Herdr and zellij translate the requested
-topology to a binary split (BSP) plan, which zellij then expresses as nested
-KDL `pane` nodes.
+topology to a binary split (BSP) plan. zellij expresses that plan as KDL `pane`
+nodes, flattening every run of same-direction splits into one container so its
+own merging cannot change the requested proportions.
 
 For serialized tmux layouts, Herdr and zellij strictly check:
 
@@ -373,9 +377,11 @@ For serialized tmux layouts, Herdr and zellij strictly check:
 Translation preserves topology and approximate ratios, not tmux's exact
 cell/pixel geometry. Pane-chain percentages are rounded to an integer for tmux
 and zellij, which sizes panes in whole percent, while Herdr receives a
-floating-point ratio, so visual proportions may differ slightly. zellij sizes
-only the first child of each split and lets its sibling take the remainder, so
-the two shares can never disagree after rounding.
+floating-point ratio, so visual proportions may differ slightly. Within one
+zellij container every child but the last carries an explicit percentage taken
+from the cumulative boundary between panes, and the last child takes the
+remainder, so rounding never accumulates and the shares always sum to one
+hundred.
 
 ## Herdr ownership state
 

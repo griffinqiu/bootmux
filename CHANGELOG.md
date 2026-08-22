@@ -4,6 +4,21 @@ All notable changes to bootmux are documented here.
 
 ## [Unreleased]
 
+- zellij 0.45.0: preset and serialized layouts now reach the terminal with the
+  proportions they ask for. bootmux used to nest every extra split, and zellij
+  merges a container into its parent whenever both split the same way while
+  keeping the merged children's percentages as written, so any run of three or
+  more panes in one direction came out skewed — a five-pane `even-horizontal`
+  window opened at 13/13/12/6/6 columns instead of five equal ones, and the top
+  row of a five-pane `tiled` window at 17/24/9 instead of 17/17/16. bootmux now
+  emits each such run as one flat container and sizes every child from its
+  cumulative boundary, so the shares always sum to one hundred. Affects
+  `tiled`, `even-horizontal`, `even-vertical`, `main-horizontal`,
+  `main-vertical`, serialized tmux layouts, and pane chains on the zellij
+  backend only; the tmux and Herdr backends were already correct. No
+  configuration change and no migration are required — restart a zellij session
+  to pick up the corrected layout.
+
 ## [0.3.1] - 2026-08-21
 
 - Herdr 0.8.2: accept socket protocol 20 after verifying that the structured

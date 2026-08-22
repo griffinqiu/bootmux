@@ -5,10 +5,15 @@
 //! initial focus, so bootmux builds the whole topology in a single call
 //! instead of a chain of split commands.
 //!
-//! Two constraints are load-bearing and were confirmed against zellij 0.44:
-//! the document must be a complete `layout { … }` node (a bare tab body is
+//! Three constraints are load-bearing. Confirmed against zellij 0.44: the
+//! document must be a complete `layout { … }` node (a bare tab body is
 //! rejected), and every node needs its own line (semicolon-separated nodes on
-//! one line fail to parse).
+//! one line fail to parse). Confirmed against zellij 0.45.0: a container is
+//! merged into its parent whenever both split the same way, and the merged
+//! children keep the percentages they were written with instead of being
+//! rescaled into the container they came from. Nested same-direction
+//! containers therefore render at the wrong sizes, so [`flatten_group`] emits
+//! the merged form directly and sizes every child against its own container.
 
 use std::fmt::Write as _;
 
@@ -70,7 +75,7 @@ fn render_tab(
 
     writeln!(document, "{INDENT}tab {} {{", attributes.join(" "))
         .expect("writing to a String cannot fail");
-    render_layout(document, &layout, &panes, focused_pane, 2, None, true);
+    render_children(document, &layout, &panes, focused_pane, 2);
     writeln!(document, "{INDENT}}}").expect("writing to a String cannot fail");
     Ok(())
 }
@@ -87,16 +92,36 @@ fn focused_pane_for(spec: &ProjectSpec, window: &WindowSpec, window_index: usize
     }
 }
 
-/// `is_tab_root` marks the split whose direction the enclosing `tab` node
-/// already declared, so it contributes children rather than another container.
-fn render_layout(
+/// Emits everything the container rooted at `layout` holds, already flattened
+/// into the child list zellij itself would produce.
+fn render_children(
+    document: &mut String,
+    layout: &Layout,
+    panes: &[crate::spec::PaneSpec],
+    focused_pane: usize,
+    depth: usize,
+) {
+    let Layout::Split { direction, .. } = layout else {
+        render_node(document, layout, panes, focused_pane, depth, None);
+        return;
+    };
+
+    let children = flatten_group(layout, *direction);
+    let sizes = group_percentages(children.iter().map(|child| child.share));
+    for (child, size) in children.iter().zip(sizes) {
+        render_node(document, child.layout, panes, focused_pane, depth, size);
+    }
+}
+
+/// Emits one child of a container: a leaf pane, or a nested container holding
+/// the splits that run the other way.
+fn render_node(
     document: &mut String,
     layout: &Layout,
     panes: &[crate::spec::PaneSpec],
     focused_pane: usize,
     depth: usize,
     size: Option<String>,
-    is_tab_root: bool,
 ) {
     let indent = INDENT.repeat(depth);
     match layout {
@@ -119,30 +144,7 @@ fn render_layout(
                     .expect("writing to a String cannot fail");
             }
         }
-        Layout::Split {
-            direction,
-            ratio,
-            first,
-            second,
-        } => {
-            // Only the first child is sized; the second takes the remainder so
-            // the two percentages can never disagree after rounding.
-            let first_size = Some(percent(*ratio));
-
-            if is_tab_root {
-                render_layout(
-                    document,
-                    first,
-                    panes,
-                    focused_pane,
-                    depth,
-                    first_size,
-                    false,
-                );
-                render_layout(document, second, panes, focused_pane, depth, None, false);
-                return;
-            }
-
+        Layout::Split { direction, .. } => {
             let mut attributes = vec![format!(
                 "split_direction={}",
                 kdl_string(split_direction(*direction))
@@ -152,27 +154,74 @@ fn render_layout(
             }
             writeln!(document, "{indent}pane {} {{", attributes.join(" "))
                 .expect("writing to a String cannot fail");
-            render_layout(
-                document,
-                first,
-                panes,
-                focused_pane,
-                depth + 1,
-                first_size,
-                false,
-            );
-            render_layout(
-                document,
-                second,
-                panes,
-                focused_pane,
-                depth + 1,
-                None,
-                false,
-            );
+            render_children(document, layout, panes, focused_pane, depth + 1);
             writeln!(document, "{indent}}}").expect("writing to a String cannot fail");
         }
     }
+}
+
+/// One child of a flattened container, holding the share of that container's
+/// own axis the child occupies.
+struct GroupChild<'layout> {
+    layout: &'layout Layout,
+    share: f64,
+}
+
+/// Collects the run of splits sharing `direction` into one flat child list.
+///
+/// The binary layout model nests every extra split, but zellij merges a
+/// same-direction container into its parent and then reads the merged
+/// children's percentages as shares of that parent. Emitting the merged form
+/// up front keeps bootmux's sizes and zellij's interpretation in agreement.
+fn flatten_group(layout: &Layout, direction: SplitDirection) -> Vec<GroupChild<'_>> {
+    fn visit<'layout>(
+        layout: &'layout Layout,
+        direction: SplitDirection,
+        share: f64,
+        children: &mut Vec<GroupChild<'layout>>,
+    ) {
+        match layout {
+            Layout::Split {
+                direction: split_direction,
+                ratio,
+                first,
+                second,
+            } if *split_direction == direction => {
+                visit(first, direction, share * ratio, children);
+                visit(second, direction, share * (1.0 - ratio), children);
+            }
+            _ => children.push(GroupChild { layout, share }),
+        }
+    }
+
+    let mut children = Vec::new();
+    visit(layout, direction, 1.0, &mut children);
+    children
+}
+
+/// zellij sizes panes in whole percent, so shares become cumulative
+/// boundaries: every child keeps its proportion, rounding never accumulates
+/// across a long run, and the last child stays unsized so zellij gives it the
+/// exact remainder.
+fn group_percentages(shares: impl ExactSizeIterator<Item = f64>) -> Vec<Option<String>> {
+    let count = shares.len();
+    let mut percentages = Vec::with_capacity(count);
+    let mut cumulative = 0.0;
+    let mut assigned = 0i64;
+    for (index, share) in shares.enumerate() {
+        if index + 1 == count {
+            percentages.push(None);
+            break;
+        }
+        cumulative += share;
+        // Every child still to come needs at least one percent of its own.
+        let floor = assigned + 1;
+        let ceiling = (100 - (count - index - 1) as i64).max(floor);
+        let boundary = ((cumulative * 100.0).round() as i64).clamp(floor, ceiling);
+        percentages.push(Some(format!("{}%", boundary - assigned)));
+        assigned = boundary;
+    }
+    percentages
 }
 
 /// zellij names a split by the orientation of the divider, which is the
@@ -183,13 +232,6 @@ fn split_direction(direction: SplitDirection) -> &'static str {
         SplitDirection::Right => "vertical",
         SplitDirection::Down => "horizontal",
     }
-}
-
-/// zellij sizes panes in whole percent, so a ratio is rounded and clamped into
-/// a range that always leaves room for the sibling pane.
-fn percent(ratio: f64) -> String {
-    let rounded = (ratio * 100.0).round().clamp(1.0, 99.0) as u32;
-    format!("{rounded}%")
 }
 
 /// Quotes a value as a KDL escaped string. KDL spells unicode escapes
@@ -345,11 +387,90 @@ mod tests {
         assert!(rendered.contains(r#"tab name="say \"hi\"""#), "{rendered}");
     }
 
+    fn sizes(shares: &[f64]) -> Vec<Option<String>> {
+        group_percentages(shares.iter().copied())
+    }
+
     #[test]
-    fn ratios_are_rounded_into_a_range_that_leaves_room_for_the_sibling() {
-        assert_eq!(percent(0.5), "50%");
-        assert_eq!(percent(0.654), "65%");
-        assert_eq!(percent(0.0), "1%");
-        assert_eq!(percent(1.0), "99%");
+    fn ratios_are_rounded_into_a_range_that_leaves_room_for_every_sibling() {
+        assert_eq!(sizes(&[0.5, 0.5]), [Some("50%".into()), None]);
+        assert_eq!(sizes(&[0.654, 0.346]), [Some("65%".into()), None]);
+        assert_eq!(sizes(&[0.0, 1.0]), [Some("1%".into()), None]);
+        assert_eq!(sizes(&[1.0, 0.0]), [Some("99%".into()), None]);
+    }
+
+    #[test]
+    fn a_run_of_shares_is_sized_from_cumulative_boundaries() {
+        let third = 1.0 / 3.0;
+        assert_eq!(
+            sizes(&[third, third, third]),
+            [Some("33%".into()), Some("34%".into()), None]
+        );
+        assert_eq!(
+            sizes(&[0.2, 0.2, 0.2, 0.2, 0.2]),
+            [
+                Some("20%".into()),
+                Some("20%".into()),
+                Some("20%".into()),
+                Some("20%".into()),
+                None
+            ]
+        );
+
+        // Every leading child keeps at least one percent, and the remainder
+        // left for the last child never falls below one percent either.
+        let crowded = vec![1.0 / 150.0; 150];
+        let crowded = sizes(&crowded);
+        assert!(crowded
+            .iter()
+            .all(|size| size.is_none() || size.as_deref() == Some("1%")));
+        assert_eq!(crowded.last(), Some(&None));
+    }
+
+    #[test]
+    fn a_run_of_same_direction_splits_is_flattened_into_one_container() {
+        // zellij merges same-direction containers, so a three-pane row has to
+        // be written flat with each pane's own share of the tab.
+        let rendered = render_project(&spec(
+            "name: row\nroot: /work\nwindows:\n  - grid:\n      layout: even-horizontal\n      \
+             panes:\n        - a: echo a\n        - b: echo b\n        - c: echo c\n",
+        ))
+        .unwrap();
+        assert_eq!(
+            rendered,
+            "layout {\n\
+             \x20   tab name=\"grid\" cwd=\"/work\" focus=true split_direction=\"vertical\" {\n\
+             \x20       pane name=\"a\" size=\"33%\" focus=true\n\
+             \x20       pane name=\"b\" size=\"34%\"\n\
+             \x20       pane name=\"c\"\n\
+             \x20   }\n\
+             }\n"
+        );
+    }
+
+    #[test]
+    fn tiled_rows_stay_nested_while_their_panes_are_flattened() {
+        let rendered = render_project(&spec(
+            "name: grid\nroot: /work\nwindows:\n  - grid:\n      layout: tiled\n      \
+             panes:\n        - a: echo a\n        - b: echo b\n        - c: echo c\n        \
+             - d: echo d\n        - e: echo e\n",
+        ))
+        .unwrap();
+        assert_eq!(
+            rendered,
+            "layout {\n\
+             \x20   tab name=\"grid\" cwd=\"/work\" focus=true split_direction=\"horizontal\" {\n\
+             \x20       pane split_direction=\"vertical\" size=\"50%\" {\n\
+             \x20           pane name=\"a\" size=\"33%\" focus=true\n\
+             \x20           pane name=\"b\" size=\"34%\"\n\
+             \x20           pane name=\"c\"\n\
+             \x20       }\n\
+             \x20       pane split_direction=\"vertical\" {\n\
+             \x20           pane name=\"d\" size=\"50%\"\n\
+             \x20           pane name=\"e\"\n\
+             \x20       }\n\
+             \x20   }\n\
+             }\n"
+        );
     }
 }

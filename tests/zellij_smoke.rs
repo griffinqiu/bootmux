@@ -117,6 +117,29 @@ impl Harness {
         self.panes(session).len()
     }
 
+    /// One tab's panes in reading order, as `(title, x, y, columns)`.
+    fn pane_geometry(&self, session: &str, tab: &str) -> Vec<(String, i64, i64, i64)> {
+        let mut geometry = self
+            .panes(session)
+            .into_iter()
+            .filter(|pane| pane.get("tab_name").and_then(Value::as_str) == Some(tab))
+            .map(|pane| {
+                let field = |name: &str| pane.get(name).and_then(Value::as_i64).unwrap_or(-1);
+                (
+                    pane.get("title")
+                        .and_then(Value::as_str)
+                        .unwrap_or_default()
+                        .to_string(),
+                    field("pane_x"),
+                    field("pane_y"),
+                    field("pane_columns"),
+                )
+            })
+            .collect::<Vec<_>>();
+        geometry.sort_by_key(|(_, x, y, _)| (*y, *x));
+        geometry
+    }
+
     fn tab_names(&self, session: &str) -> Vec<String> {
         String::from_utf8_lossy(
             &self
@@ -168,6 +191,17 @@ impl Drop for Harness {
             let _ = self.zellij(&["delete-session", session, "--force"]);
         }
     }
+}
+
+/// Panes that share a container evenly may differ by at most the one cell
+/// whole-percent sizing can leave behind.
+fn assert_even_widths(panes: &[(String, i64, i64, i64)], layout: &str) {
+    let widths = panes.iter().map(|(.., width)| *width).collect::<Vec<_>>();
+    let spread = widths.iter().max().unwrap() - widths.iter().min().unwrap();
+    assert!(
+        spread <= 1,
+        "{layout} panes must share their container evenly, saw widths {widths:?}"
+    );
 }
 
 fn assert_success(output: &Output, operation: &str) {
@@ -308,6 +342,7 @@ fn zellij_runtime_matrix() {
     let suffix = unique_suffix();
     let session = format!("bmzj-{suffix}");
     let second_session = format!("bmzj2-{suffix}");
+    let layout_session = format!("bmzjl-{suffix}");
     let app_root = root.join("app");
     std::fs::create_dir_all(&app_root).unwrap();
 
@@ -319,7 +354,11 @@ fn zellij_runtime_matrix() {
         cache_home,
         zellij_config_dir,
         projects: projects.clone(),
-        sessions: vec![session.clone(), second_session.clone()],
+        sessions: vec![
+            session.clone(),
+            second_session.clone(),
+            layout_session.clone(),
+        ],
         _temp: temp,
     };
 
@@ -462,6 +501,76 @@ fn zellij_runtime_matrix() {
         "panes must report the tab they belong to"
     );
     matrix("list_panes_json");
+
+    // zellij merges a container into its parent whenever both split the same
+    // way, keeping the merged children's percentages as written, so a run of
+    // three or more panes only holds its proportions when bootmux emits that
+    // run flat. The rendered document cannot prove this; only the live
+    // geometry can.
+    let layout_project = projects.join(format!("{layout_session}.yml"));
+    std::fs::write(
+        &layout_project,
+        format!(
+            "name: {layout_session}\n\
+             root: {root_display}\n\
+             attach: false\n\
+             windows:\n  \
+             - row:\n      \
+                 layout: even-horizontal\n      \
+                 panes:\n        \
+                   - one: true\n        \
+                   - two: true\n        \
+                   - three: true\n        \
+                   - four: true\n        \
+                   - five: true\n  \
+             - grid:\n      \
+                 layout: tiled\n      \
+                 panes:\n        \
+                   - a: true\n        \
+                   - b: true\n        \
+                   - c: true\n        \
+                   - d: true\n        \
+                   - e: true\n",
+        ),
+    )
+    .unwrap();
+    let layout_path = layout_project.to_str().unwrap().to_string();
+    let layout_start = harness.bootmux(&["start", "-p", &layout_path]);
+    assert_success(&layout_start, "layout start");
+    assert!(
+        wait_until(|| harness.pane_count(&layout_session) == 10),
+        "expected 10 layout panes, saw {}",
+        harness.pane_count(&layout_session)
+    );
+
+    let row = harness.pane_geometry(&layout_session, "row");
+    assert_eq!(
+        row.iter()
+            .map(|(title, ..)| title.as_str())
+            .collect::<Vec<_>>(),
+        ["one", "two", "three", "four", "five"],
+        "even-horizontal must place the configured panes left to right"
+    );
+    assert_even_widths(&row, "even-horizontal");
+
+    // tiled keeps its rows nested, so each row is checked on its own.
+    let grid = harness.pane_geometry(&layout_session, "grid");
+    let mut rows: Vec<Vec<(String, i64, i64, i64)>> = Vec::new();
+    for pane in grid {
+        match rows.last_mut() {
+            Some(last) if last[0].2 == pane.2 => last.push(pane),
+            _ => rows.push(vec![pane]),
+        }
+    }
+    assert_eq!(
+        rows.iter().map(Vec::len).collect::<Vec<_>>(),
+        [3, 2],
+        "five tiled panes must fill a row of three above a row of two"
+    );
+    for row in &rows {
+        assert_even_widths(row, "tiled row");
+    }
+    matrix("layout_geometry");
 
     // A detached session has no attached client, so zellij reports the focus
     // the layout declared rather than an active tab: the configured tab is the
